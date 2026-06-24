@@ -828,11 +828,7 @@ function renderClassExpanded() {
             e.stopPropagation();
             e.preventDefault();
             ccState.gender = btn.dataset.selectGender;
-            el.querySelectorAll('[data-select-gender]').forEach(b => {
-                const active = b.dataset.selectGender === ccState.gender;
-                b.classList.toggle('cs-gender-active', active);
-                b.setAttribute('aria-pressed', String(active));
-            });
+            renderClassExpanded();
         });
     });
 
