@@ -2,7 +2,7 @@
 
 *A Dungeon Adventure*
 
-Version 2.0.0 · *"Many descend. Few return."*
+Version 1.12.0 · *"Many descend. Few return."*
 
 ---
 
@@ -587,7 +587,18 @@ Larger d-pad buttons, swipe gesture support, and single-column responsive layout
 
 # 14. Version History
 
-## 2.0.0 — "The Great Overhaul"
+## 1.12.0
+
+- **Populated World Zones:** Forests now contain forage nodes (Wild Herbs, Ash Berries, Glowcap Mushrooms, Coin Pouches) and random events. Roads host a travelling merchant with rotating stock. Both zone types can trigger overland ambushes — real combat on the world map.
+- **Return-to-Tavern Portal System:** Mages and Clerics unlock Town Portal / Sanctuary Gate at Level 4 (6 mana). Warriors and Rogues buy a Hearthstone Coin from the innkeeper (40g) before diving. Floor 1 exits remain free for all classes.
+- **Town NPC Services Fixed:** The Alchemist's Resistance Tonic now blocks poison and burn for 3 floors. Greater Potions are consumable. The Town Hall correctly tracks lifetime kills.
+- **Arena Overhaul:** Season-scaled gold rewards (Silver 1.4×, Gold 1.8×, Champion 2.5×). Diminishing renown after three kills on the same champion. Release cage button (8g) prevents cage softlock. Dungeon floor items correctly persist through arena visits.
+- **Boss & Enemy Balance:** Boss ATK scaling reduced (1.4×→1.1×/floor), boss HP scaling reduced (12→10/floor). Orc ATK 14→12. Dark Knight DEF 8→6. Demon ATK 16→14.
+- **Combat Fixes:** Decoy HP clamped above zero. Arena entry clears all status effects. Boss variant enemies cannot be captured.
+- **Quit to Desktop:** Settings panel (O key) now has a Quit to Desktop button, wired through Electron IPC.
+- **Minimap:** Press M to toggle a world map overlay showing all zones, your current position, and zone types. Fast-travel connector displays travel routes.
+
+**Visual & UX Overhaul:**
 
 - Class-specific particle FX on character creation (Warrior fire, Rogue shadow, Mage arcane, Cleric holy).
 - Gender picker redesigned with glowing symbol buttons and portrait preview.
@@ -607,17 +618,6 @@ Larger d-pad buttons, swipe gesture support, and single-column responsive layout
 - Electron quit button fixed via preload.js IPC bridge.
 - Dungeon entry via Space key fixed.
 - Multiple bug fixes (missing functions, HTML element gaps, portrait gender fallback).
-
-## 1.12.0
-
-- **Populated World Zones:** Forests now contain forage nodes (Wild Herbs, Ash Berries, Glowcap Mushrooms, Coin Pouches) and random events. Roads host a travelling merchant with rotating stock. Both zone types can trigger overland ambushes — real combat on the world map.
-- **Return-to-Tavern Portal System:** Mages and Clerics unlock Town Portal / Sanctuary Gate at Level 4 (6 mana). Warriors and Rogues buy a Hearthstone Coin from the innkeeper (40g) before diving. Floor 1 exits remain free for all classes.
-- **Town NPC Services Fixed:** The Alchemist's Resistance Tonic now blocks poison and burn for 3 floors. Greater Potions are consumable. The Town Hall correctly tracks lifetime kills.
-- **Arena Overhaul:** Season-scaled gold rewards (Silver 1.4×, Gold 1.8×, Champion 2.5×). Diminishing renown after three kills on the same champion. Release cage button (8g) prevents cage softlock. Dungeon floor items correctly persist through arena visits.
-- **Boss & Enemy Balance:** Boss ATK scaling reduced (1.4×→1.1×/floor), boss HP scaling reduced (12→10/floor). Orc ATK 14→12. Dark Knight DEF 8→6. Demon ATK 16→14.
-- **Combat Fixes:** Decoy HP clamped above zero. Arena entry clears all status effects. Boss variant enemies cannot be captured.
-- **Quit to Desktop:** Settings panel (O key) now has a Quit to Desktop button, wired through Electron IPC.
-- **Minimap:** Press M to toggle a world map overlay showing all zones, your current position, and zone types. Fast-travel connector displays travel routes.
 
 ## 1.11.0
 

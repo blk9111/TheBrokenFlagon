@@ -1,4 +1,4 @@
-const GAME_VERSION = '2.0.0';
+const GAME_VERSION = '1.12.0';
 
 const DUNGEON_NAME = 'The Dungeon of Ash';
 
@@ -2368,6 +2368,7 @@ const CHANGELOG = [
             'All five boss balance fixes: boss ATK scaling reduced from 1.4× to 1.1× per floor, boss HP scaling reduced from 12 to 10 per floor. Orc ATK 14→12, Dark Knight DEF 8→6, Demon ATK 16→14.',
             'Combat edge cases closed: decoy HP no longer shows negative values, arena entry now clears all status effects so poison cannot kill you at full HP on turn 1, and boss variant enemies (wraiths, splitters) can no longer be captured.',
             'Quit to Desktop button added to the Settings panel (O key) and fully wired via Electron IPC — the title screen quit button actually works now.',
+            'A sweeping visual & UX overhaul: class-specific character-creation FX, a redesigned gender picker, full-screen death/victory overlays, an animated combat log, achievement toasts, cinematic boss reveals, item rarity shine effects, level-up stat badges, and a run-history panel.',
             'Numerous bot and engine fixes throughout.',
         ]
     },
