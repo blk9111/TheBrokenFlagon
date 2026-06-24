@@ -792,6 +792,11 @@ function renderClassExpanded() {
                         <button class="cs-gender-btn${ccState.gender === 'm' ? ' cs-gender-active' : ''}" data-select-gender="m" aria-pressed="${ccState.gender === 'm'}" type="button">&#9794; Male</button>
                         <button class="cs-gender-btn${ccState.gender === 'f' ? ' cs-gender-active' : ''}" data-select-gender="f" aria-pressed="${ccState.gender === 'f'}" type="button">&#9792; Female</button>
                     </div>
+                    <img class="cs-portrait-preview"
+                         src="${ccState.className}-${ccState.gender}.png"
+                         alt="${capitalize(ccState.className)} portrait"
+                         onerror="this.style.display='none'"
+                         onload="this.style.display=''" />
                 </div>
                 <div class="cs-preview-name-row">
                     <label class="cs-name-label" for="char-name-input">Name <span>(optional — defaults to ${sc.name})</span></label>
