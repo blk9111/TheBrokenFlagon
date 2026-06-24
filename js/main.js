@@ -824,8 +824,8 @@ function renderClassExpanded() {
     `;
 
     // Wire gender buttons: update ccState + toggle classes IN-PLACE.
-    // Deliberately avoids calling selectGender() (which re-renders the whole
-    // expanded section) because Chrome freezes the event-dispatch path at
+    // Deliberately avoids calling renderClassExpanded() (which replaces the
+    // entire el.innerHTML) because Chrome freezes the event-dispatch path at
     // fire-time — DOM changes during bubbling can let stale parent handlers
     // run and reset state. Toggling classes directly sidesteps all of that.
     el.querySelectorAll('[data-select-gender]').forEach(btn => {
@@ -833,7 +833,17 @@ function renderClassExpanded() {
             e.stopPropagation();
             e.preventDefault();
             ccState.gender = btn.dataset.selectGender;
-            renderClassExpanded();
+            // Toggle active class on all gender buttons without re-rendering
+            el.querySelectorAll('[data-select-gender]').forEach(b => {
+                b.classList.toggle('cs-gender-active', b.dataset.selectGender === ccState.gender);
+                b.setAttribute('aria-pressed', String(b.dataset.selectGender === ccState.gender));
+            });
+            // Update the portrait preview image in-place
+            const portrait = el.querySelector('.cs-portrait-preview');
+            if (portrait) {
+                portrait.src = `${ccState.className}-${ccState.gender}.png`;
+                portrait.style.display = '';
+            }
         });
     });
 
