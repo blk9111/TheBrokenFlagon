@@ -1,0 +1,84 @@
+{
+  "name": "the-broken-flagon",
+  "version": "2.0.0",
+  "description": "The Broken Flagon — a tavern-hub dungeon crawler RPG",
+  "author": "Brian",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node run-tests.cjs",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.brokenflagon.game",
+    "productName": "The Broken Flagon",
+    "copyright": "Copyright © 2025",
+    "publish": null,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build-assets"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "js/**/*",
+      "sprites/**/*",
+      "*.png",
+      "*.jpg",
+      "*.mp4",
+      "electron-main.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build-assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build-assets/icon.icns",
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build-assets/icon.png",
+      "category": "Game"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build-assets/icon.ico",
+      "installerHeaderIcon": "build-assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.0.0",
+    "jsdom": "^24.1.3",
+    "png-to-ico": "^3.0.1"
+  }
+}

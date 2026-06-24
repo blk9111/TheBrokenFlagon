@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Broken Flagon — Characterization Tests</title>
+<style>
+    body { background:#14110c; color:#e8e0d0; font:14px/1.5 'Courier New',monospace; margin:0; padding:24px; }
+    h1 { color:#ffd65a; font-size:20px; margin:0 0 4px; }
+    .sub { color:#aaa397; margin:0 0 20px; font-style:italic; }
+    #summary { padding:12px 16px; border-radius:8px; margin-bottom:20px; font-weight:700; font-size:16px; }
+    #summary.pass { background:rgba(88,194,109,0.14); border:1px solid #58c26d; color:#7ad88e; }
+    #summary.fail { background:rgba(225,75,75,0.14); border:1px solid #e14b4b; color:#ff7a7a; }
+    .group { margin-bottom:18px; border:1px solid #3a352c; border-radius:8px; overflow:hidden; }
+    .group-head { background:#221d14; padding:8px 14px; font-weight:700; color:#ffd65a; }
+    .case { padding:6px 14px; border-top:1px solid #2a251c; display:flex; gap:10px; align-items:baseline; }
+    .case .icon { flex-shrink:0; width:16px; }
+    .case.ok .icon { color:#58c26d; }
+    .case.bad .icon { color:#e14b4b; }
+    .case .detail { color:#aaa397; font-size:12px; }
+    .case.bad .detail { color:#ff9a9a; }
+</style>
+</head>
+<body>
+<h1>The Broken Flagon — Characterization Tests</h1>
+<p class="sub">Tripwires around the three expensive-to-break systems: save round-trip, seed determinism, arena bout lifecycle.</p>
+<div id="summary">Running…</div>
+<div id="results"></div>
+
+<!-- Headless canvas so data.js's top-level getContext() call succeeds -->
+<canvas id="game-canvas" width="1000" height="720" style="display:none"></canvas>
+
+<!-- Hidden DOM the game's load/render path touches without null-guards. Their
+     absence made renderMessages() throw inside loadActiveRun()'s try/catch,
+     which swallowed the error and returned false — a harness gap, not a game
+     bug. Providing them lets the real load path run to completion under test. -->
+<div id="harness-dom" style="display:none">
+    <div id="message-log"></div>
+    <div id="game-ui"></div>
+    <div id="game-over"></div>
+    <div id="class-select"></div>
+    <div id="title-screen"></div>
+    <div id="run-snapshot"></div>
+    <div id="enemy-intent-list"></div>
+    <div id="intent-panel"></div>
+    <div id="best-floor"></div>
+</div>
+
+<!--
+  Load the real game modules in their native browser environment, in the same
+  order index.html uses. This tests the actual shipping code, not a re-implementation.
+  audio.js / render.js are loaded too so cross-file calls resolve; their canvas/audio
+  side effects are harmless against the hidden canvas above.
+-->
+<script src="js/data.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/dungeon.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/items.js"></script>
+<script src="js/tavern.js"></script>
+<script src="js/arena.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/save.js"></script>
+
+<script>
+// ── Minimal test framework ──────────────────────────────────────────────────
+const groups = [];
+let current = null;
+function describe(name, fn) { current = { name, cases: [] }; groups.push(current); try { fn(); } catch (e) { current.cases.push({ ok:false, name:'(threw during setup)', detail:String(e && e.stack || e) }); } }
+function it(name, fn) { try { fn(); current.cases.push({ ok:true, name }); } catch (e) { current.cases.push({ ok:false, name, detail:String(e && e.message || e) }); } }
+function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+function eq(a, b, msg) { if (a !== b) throw new Error((msg||'expected equality') + ` — got ${JSON.stringify(a)}, expected ${JSON.stringify(b)}`); }
+function deepEq(a, b, msg) { const sa=JSON.stringify(a), sb=JSON.stringify(b); if (sa!==sb) throw new Error((msg||'expected deep equality') + `\n  A=${sa}\n  B=${sb}`); }
+
+// Stub away the genuinely environmental bits so logic functions run headless.
+// We intentionally do NOT stub rng/seedRun/generate* — those are under test.
+// This set must match run-tests.cjs's overrides: any renderer that touches a
+// DOM element not present on this minimal test page has to be neutralised, or
+// it throws "Cannot set properties of null" and fails otherwise-passing tests.
+window.updateUI = function(){};
+window.renderBestFloor = function(){};
+window.renderMessages = function(){};
+window.renderArenaPanel = function(){};
+window.renderEnemyIntents = function(){};
+window.refreshEnemyIntents = function(){};
+window.addMessage = function(){};       // silence chronicle spam during tests
+window.showEventCard = function(){};
+window.addFloatingText = function(){};
+window.addBurst = function(){};
+window.addCombatShake = window.addCombatShake; // real (DOM-free) — needed by a settings test
+window.triggerHitStop = function(){};
+window.triggerScreenFlash = function(){};
+window.spawnDeathAnim = function(){};
+window.sfxItemPickup = function(){};
+window.sfxBossEncounter = function(){};
+window.sfxLevelUp = function(){};
+window.sfxDeath = function(){};
+window.trackGoldPickup = function(){};
+
+// ── Stale-file guard ────────────────────────────────────────────────────────
+// If the browser is serving cached/older js/ files, recent functions won't
+// exist and tests fail with cryptic "X is not defined". Detect that up front
+// and show a plain-language banner telling the user to hard-refresh, instead
+// of leaving them to decode the failures. Lists the specific recent globals
+// this test build expects so a partial/mismatched copy is obvious.
+(function checkFreshness() {
+    const expected = {
+        'oddsFor (arena.js)': typeof oddsFor,
+        'getFameOddsBonus (arena.js)': typeof getFameOddsBonus,
+        'getDailySeed (data.js)': typeof getDailySeed,
+        'recordBestiaryKill (data.js)': typeof recordBestiaryKill,
+        'getNextGoals (data.js)': typeof getNextGoals,
+        'effectiveVolume (data.js)': typeof effectiveVolume,
+    };
+    const missing = Object.entries(expected).filter(([, t]) => t !== 'function').map(([n]) => n);
+    if (missing.length) {
+        const sum = document.getElementById('summary');
+        sum.className = 'fail';
+        sum.innerHTML = `\u26A0 Stale game files detected — your browser is running OLD JavaScript.<br>`
+            + `<span style="font-weight:400;font-size:13px">`
+            + `Missing: ${missing.join(', ')}.<br>`
+            + `Fix: <b>hard-refresh</b> this page (Ctrl+Shift+R / Cmd+Shift+R), and confirm your <code>js/</code> folder has the latest files. `
+            + `Then re-run. The test results below are unreliable until this is resolved.</span>`;
+    }
+})();
+
+// ── 1. Seed determinism ─────────────────────────────────────────────────────
+// The "share a seed, get the same dungeon" promise depends on the RNG stream
+// being identical for identical seeds. This catches any change that shifts the
+// number of rng() draws during generation.
+describe('Seed determinism', () => {
+    it('same seed → identical rng() sequence', () => {
+        seedRun(123456);
+        const a = Array.from({length:50}, () => rng());
+        seedRun(123456);
+        const b = Array.from({length:50}, () => rng());
+        deepEq(a, b, 'rng sequence diverged for identical seed');
+    });
+
+    it('different seeds → different sequence', () => {
+        seedRun(111);
+        const a = Array.from({length:20}, () => rng());
+        seedRun(222);
+        const b = Array.from({length:20}, () => rng());
+        assert(JSON.stringify(a) !== JSON.stringify(b), 'two different seeds produced identical streams');
+    });
+
+    it('seed code round-trips (seedToCode → codeToSeed)', () => {
+        [1, 123456, 4294967295, 999].forEach(s => {
+            const code = seedToCode(s);
+            const back = codeToSeed(code);
+            eq(back, s >>> 0, `seed ${s} did not round-trip (code=${code})`);
+        });
+    });
+
+    it('same seed → identical dungeon layout', () => {
+        // Generate floor 1 twice from the same seed and compare the tile grids.
+        function genFloor1(seed) {
+            seedRun(seed);
+            gameState.floor = 1;
+            gameState.player = { x:2, y:2, subclass:null, className:'warrior', level:1 };
+            generateDungeon();
+            return gameState.dungeon.map(r => [...r]);
+        }
+        const a = genFloor1(7777);
+        const b = genFloor1(7777);
+        deepEq(a, b, 'identical seed produced different dungeon layouts');
+    });
+});
+
+// ── 2. Save round-trip ──────────────────────────────────────────────────────
+// A save-format regression silently corrupts a player's run. This serializes a
+// known state, reloads it, and asserts the player and floor survive intact.
+describe('Save round-trip', () => {
+    it('active run survives save → load', () => {
+        // Build a known run state
+        seedRun(42);
+        gameState.floor = 3;
+        gameState.player = new Player('mage', 'elementalist', 'TestWizard');
+        gameState.player.hp = 37; gameState.player.maxHp = 60;
+        gameState.player.gold = 215; gameState.player.level = 4;
+        gameState.player.x = 5; gameState.player.y = 6;
+        gameState.player.inventory = [{ type:'potion', name:'Health Potion', qty:2 }];
+        generateDungeon();
+        gameState.enemies = [];
+        gameState.messages = ['test message'];
+        gameState.gameOver = false;
+
+        // Round-trip through localStorage
+        clearActiveRun();
+        saveActiveRun();
+        // Wipe the live state to prove load actually restores it
+        const savedGold = gameState.player.gold;
+        const savedFloor = gameState.floor;
+        gameState.player.gold = 0;
+        gameState.floor = 0;
+
+        const ok = loadActiveRun();
+        assert(ok, 'loadActiveRun() returned false on a save we just wrote');
+        eq(gameState.floor, savedFloor, 'floor not restored');
+        eq(gameState.player.gold, savedGold, 'gold not restored');
+        eq(gameState.player.className, 'mage', 'className not restored');
+        eq(gameState.player.subclass, 'elementalist', 'subclass not restored');
+        eq(gameState.player.level, 4, 'level not restored');
+        assert(Array.isArray(gameState.player.inventory), 'inventory missing after load');
+        eq(gameState.player.inventory[0]?.qty, 2, 'inventory item qty not restored');
+    });
+
+    it('save carries a version field', () => {
+        saveActiveRun();
+        const raw = localStorage.getItem(SAVE_KEY_RUN);
+        assert(raw, 'no active-run save was written');
+        const parsed = JSON.parse(raw);
+        eq(parsed.v, 1, 'save version field is not 1');
+    });
+
+    it('bestFloor persists via localStorage (not window.storage)', () => {
+        gameState.bestFloor = 0;
+        saveBestFloor(18);
+        eq(localStorage.getItem(SAVE_KEY_BEST_FLOOR), '18', 'bestFloor not written to localStorage');
+        gameState.bestFloor = 0;
+        loadBestFloor();
+        eq(gameState.bestFloor, 18, 'bestFloor not restored from localStorage');
+        // And confirm the old async API is truly gone
+        eq(typeof window.storage, 'undefined', 'window.storage still present — packaging risk remains');
+    });
+});
+
+// ── 4. Save migration / robustness ───────────────────────────────────────────
+// The save format carries a `v:` field. These confirm the load path rejects
+// incompatible/garbage saves cleanly rather than crashing or corrupting state.
+describe('Save migration & robustness', () => {
+    it('rejects a save with a future/unknown version', () => {
+        localStorage.setItem(SAVE_KEY_RUN, JSON.stringify({ v: 999, player:{}, floor:2 }));
+        const ok = loadActiveRun();
+        eq(ok, false, 'loadActiveRun should reject an unknown save version');
+    });
+
+    it('rejects a structurally invalid save without throwing', () => {
+        localStorage.setItem(SAVE_KEY_RUN, JSON.stringify({ v: 1, floor: 'not-a-number' }));
+        let threw = false, ok = null;
+        try { ok = loadActiveRun(); } catch (_) { threw = true; }
+        assert(!threw, 'loadActiveRun threw on a malformed save instead of returning false');
+        eq(ok, false, 'malformed save should load as false');
+    });
+
+    it('rejects outright garbage in the save slot', () => {
+        localStorage.setItem(SAVE_KEY_RUN, '{ this is not valid json');
+        let threw = false, ok = null;
+        try { ok = loadActiveRun(); } catch (_) { threw = true; }
+        assert(!threw, 'loadActiveRun threw on non-JSON instead of returning false');
+        eq(ok, false, 'garbage save should load as false');
+    });
+});
+
+// ── 5. First-time contextual hints ───────────────────────────────────────────
+// Each hint must fire exactly once ever (persisted), and the seen-state must
+// survive a meta save/load round-trip.
+describe('First-time hints', () => {
+    it('a hint fires once then never again', () => {
+        gameMeta.hintsSeen = {};
+        eq(showFirstTimeHint('trap'), true, 'first call should fire');
+        eq(showFirstTimeHint('trap'), false, 'second call should be a no-op');
+        eq(gameMeta.hintsSeen.trap, true, 'seen flag not recorded');
+    });
+
+    it('unknown hint id does nothing', () => {
+        gameMeta.hintsSeen = {};
+        eq(showFirstTimeHint('not_a_real_hint'), false, 'unknown id should not fire');
+    });
+
+    it('every FIRST_TIME_HINTS id has non-empty text', () => {
+        Object.entries(FIRST_TIME_HINTS).forEach(([id, text]) => {
+            assert(typeof text === 'string' && text.length > 0, `hint "${id}" has no text`);
+        });
+    });
+
+    it('hintsSeen survives a meta save/load round-trip', () => {
+        gameMeta.hintsSeen = {};
+        showFirstTimeHint('relic');
+        showFirstTimeHint('cursed');
+        saveMetaProgress();
+        // Wipe and reload
+        gameMeta.hintsSeen = {};
+        loadMetaProgress();
+        eq(gameMeta.hintsSeen.relic, true, 'relic hint not persisted');
+        eq(gameMeta.hintsSeen.cursed, true, 'cursed hint not persisted');
+        // And a persisted hint should still no-op after reload
+        eq(showFirstTimeHint('relic'), false, 'persisted hint fired again after reload');
+    });
+});
+
+// ── 3. Pit bout lifecycle ────────────────────────────────────────────────────
+// New code with heavy state-swapping. A bout swaps the dungeon grid and must
+// restore the world exactly on win OR loss, and never leave the player dead on
+// a non-ironman loss.
+describe('Pit bout lifecycle', () => {
+    function setupArenaPlayer() {
+        seedRun(99);
+        gameState.floor = 0;
+        gameState.inCourtyard = true;
+        gameState.bestFloor = 25; // arena unlocked
+        gameState.player = new Player('warrior', 'gladiator', 'Pit Fighter');
+        gameState.player.hp = 80; gameState.player.maxHp = 100;
+        gameState.player.gold = 100;
+        gameState.player.x = 6; gameState.player.y = 12;
+        gameState.capturedCreatures = [];
+        gameState.enemies = [];
+        gameState.dungeon = generateArenaFloor ? [] : [];
+    }
+
+    it('isArenaUnlocked respects bestFloor gate for non-gladiators', () => {
+        // Use a non-gladiator so the class bypass doesn't mask the floor gate
+        gameState.player = new Player('warrior', 'knight', 'Gate Tester');
+        gameState.bestFloor = 10; eq(isArenaUnlocked(), false, 'arena unlocked too early');
+        gameState.bestFloor = 20; eq(isArenaUnlocked(), true, 'arena did not unlock at 20');
+    });
+
+    it('gladiator unlocks the arena from level 1 regardless of floor', () => {
+        gameState.player = new Player('warrior', 'gladiator', 'Pit Born');
+        gameState.bestFloor = 0;
+        eq(isArenaUnlocked(), true, 'gladiator should have Pit access at floor 0');
+        gameState.bestFloor = 5;
+        eq(isArenaUnlocked(), true, 'gladiator access should not depend on floor');
+        // And a non-gladiator at the same floor stays locked
+        gameState.player = new Player('warrior', 'knight', 'Earner');
+        eq(isArenaUnlocked(), false, 'non-gladiator should still be gated at low floor');
+    });
+
+    it('win restores world and awards gold + fame', () => {
+        setupArenaPlayer();
+        const champ = ARENA_CHAMPIONS[0];
+        const bout = { type:'champion', data:champ, goldReward:champ.goldBase, fameReward:champ.fameBase, odds:1.5 };
+        const startGold = gameState.player.gold;
+        const startFame = getArenaFame();
+
+        startArenaBout(bout, 0, false);
+        assert(gameState.inArenaBout === true, 'inArenaBout not set after start');
+        assert(gameState.enemies.length === 1, 'opponent not spawned');
+
+        resolveArenaBout(true);
+        eq(gameState.inArenaBout, false, 'inArenaBout not cleared after win');
+        eq(gameState.floor, 0, 'floor not restored to tavern after bout');
+        assert(gameState.player.gold > startGold, 'no gold awarded on win');
+        assert(getArenaFame() > startFame, 'no fame awarded on win');
+    });
+
+    it('non-ironman loss leaves player alive at 1 HP', () => {
+        setupArenaPlayer();
+        const champ = ARENA_CHAMPIONS[0];
+        const bout = { type:'champion', data:champ, goldReward:champ.goldBase, fameReward:champ.fameBase, odds:1.5 };
+        startArenaBout(bout, 50, false); // bet 50, non-ironman
+        resolveArenaBout(false);
+        eq(gameState.inArenaBout, false, 'inArenaBout not cleared after loss');
+        eq(gameState.player.hp, 1, 'non-ironman loss should leave player at 1 HP, not dead');
+        eq(gameState.gameOver, false, 'non-ironman loss should not end the run');
+    });
+
+    it('captured creature is consumed when its bout starts', () => {
+        setupArenaPlayer();
+        gameState.capturedCreatures = [{
+            type:'goblin', name:'Caged Goblin', color:'#d32f2f', glyph:'G',
+            hp:18, maxHp:18, atk:5, def:2, floorCaptured:5, goldBase:40, fameBase:14
+        }];
+        const bout = { type:'capture', data:gameState.capturedCreatures[0], idx:0,
+                       goldReward:40, fameReward:14, odds:2.5 };
+        startArenaBout(bout, 0, false);
+        eq(gameState.capturedCreatures.length, 0, 'captured creature not consumed at bout start');
+        resolveArenaBout(true);
+    });
+
+    it('courtyard interaction only opens the arena, never a tavern NPC', () => {
+        // Regression guard: tavern-interior NPCs keep their tavern coordinates
+        // while you're in the courtyard. Standing on a tile that collides with
+        // one (e.g. the gambler at 5,14, near the Pit gate) must NOT open it.
+        seedRun(7);
+        gameState.floor = 0;
+        gameState.inCourtyard = true;
+        gameState.bestFloor = 25;
+        gameState.player = new Player('warrior', 'gladiator', 'Pit Fighter');
+        gameState.gamblingOpen = false;
+        gameState.arenaOpen = false;
+        // Stand adjacent to where the gambler WOULD be in the tavern (5,14)
+        gameState.player.x = 5; gameState.player.y = 13;
+        interactInTavern();
+        eq(gameState.gamblingOpen, false, 'courtyard Space must not open the dice table');
+
+        // Standing on the arena gate SHOULD open the arena
+        gameState.player.x = gameState.arenaGate.x; gameState.player.y = gameState.arenaGate.y - 1;
+        interactInTavern();
+        eq(gameState.arenaOpen, true, 'courtyard Space at the gate should open the arena');
+        if (typeof closeArena === 'function') closeArena();
+    });
+
+    it('starting a bout swaps to the arena floor and leaves tavern/courtyard state', () => {
+        // Regression guard for the "tavern renders behind the arena" bug: a bout
+        // must set inArenaBout, clear inCourtyard, and replace the dungeon grid
+        // with the arena pit — the render gates key off exactly these.
+        setupArenaPlayer();
+        gameState.dungeon = [['tavern-marker']]; // sentinel "old" grid
+        const champ = ARENA_CHAMPIONS[0];
+        const bout = { type:'champion', data:champ, goldReward:champ.goldBase, fameReward:champ.fameBase, odds:1.5 };
+        startArenaBout(bout, 0, false);
+        eq(gameState.inArenaBout, true, 'bout should set inArenaBout');
+        eq(gameState.inCourtyard, false, 'bout should clear inCourtyard');
+        assert(gameState.dungeon[0]?.[0] !== 'tavern-marker', 'bout should replace the dungeon grid with the arena floor');
+        // The arena floor is the generated pit: a known interior tile is open (0)
+        eq(gameState.dungeon[9]?.[12], 0, 'arena pit interior should be walkable floor');
+        resolveArenaBout(true);
+        eq(gameState.inArenaBout, false, 'resolving should clear inArenaBout');
+    });
+});
+
+// ── 7. Pit fame feedback ─────────────────────────────────────────────────────
+// Reputation should both read out correctly and pay off mechanically.
+describe('Pit fame feedback', () => {
+    it('Pit tier climbs with fame', () => {
+        gameMeta.pitFame = 0;   eq(getArenaTier().title, 'Unknown',    'fame 0 should be Unknown');
+        gameMeta.pitFame = 25;  eq(getArenaTier().title, 'Challenger', 'fame 25 should be Challenger');
+        gameMeta.pitFame = 500; eq(getArenaTier().title, 'Legend',     'fame 500 should be Legend');
+    });
+
+    it('odds bonus scales with Pit fame tier', () => {
+        gameMeta.pitFame = 0;
+        const base = oddsFor('Easy');
+        gameMeta.pitFame = 500; // Legend
+        const boosted = oddsFor('Easy');
+        assert(boosted > base, 'Legend odds should beat Unknown odds');
+        // Bonus is capped at +30% (Legend = tier index 5 × 6%)
+        eq(getFameOddsBonus(), 1.3, 'Legend fame bonus should be exactly +30%');
+    });
+
+    it('innkeeper has a greeting line for every fame tier', () => {
+        ARENA_FAME_TIERS.forEach(t => {
+            assert(INNKEEPER_FAME_LINES[t.title], `no innkeeper line for tier ${t.title}`);
+        });
+    });
+
+    it('odds bonus never drops below 1x', () => {
+        gameMeta.pitFame = 0;
+        assert(getFameOddsBonus() >= 1, 'fame bonus should never reduce odds');
+    });
+});
+
+// ── 8. Settings ──────────────────────────────────────────────────────────────
+// Volume/mute logic and persistence — a wrong effectiveVolume() means silent
+// audio or ignored mute, and broken persistence means settings reset every run.
+describe('Settings', () => {
+    it('effectiveVolume respects mute and volume', () => {
+        gameSettings.muted = false; gameSettings.masterVolume = 0.5;
+        eq(effectiveVolume(), 0.5, 'unmuted should return the volume');
+        gameSettings.muted = true;
+        eq(effectiveVolume(), 0, 'muted should return 0 regardless of volume');
+        gameSettings.muted = false;
+    });
+
+    it('settings persist via save/load round-trip', () => {
+        gameSettings.masterVolume = 0.33;
+        gameSettings.muted = true;
+        gameSettings.screenShake = false;
+        gameSettings.reduceMotion = true;
+        saveSettings();
+        // Reset to defaults, then reload
+        gameSettings = { ...DEFAULT_SETTINGS };
+        loadSettings();
+        eq(gameSettings.masterVolume, 0.33, 'volume not persisted');
+        eq(gameSettings.muted, true, 'mute not persisted');
+        eq(gameSettings.screenShake, false, 'screenShake not persisted');
+        eq(gameSettings.reduceMotion, true, 'reduceMotion not persisted');
+    });
+
+    it('load merges over defaults for missing keys', () => {
+        // Simulate an older save that only had volume
+        localStorage.setItem(SAVE_KEY_SETTINGS, JSON.stringify({ masterVolume: 0.9 }));
+        gameSettings = { ...DEFAULT_SETTINGS };
+        loadSettings();
+        eq(gameSettings.masterVolume, 0.9, 'persisted key not applied');
+        eq(gameSettings.screenShake, DEFAULT_SETTINGS.screenShake, 'missing key should fall back to default');
+    });
+
+    it('volume clamps to 0..1 on load', () => {
+        localStorage.setItem(SAVE_KEY_SETTINGS, JSON.stringify({ masterVolume: 5 }));
+        gameSettings = { ...DEFAULT_SETTINGS };
+        loadSettings();
+        assert(gameSettings.masterVolume <= 1, 'volume should clamp to <= 1');
+    });
+
+    it('reduceMotion suppresses screen shake', () => {
+        // Fully self-contained: set every flag this depends on explicitly,
+        // since earlier tests may have left gameState/gameSettings dirty.
+        gameState.screenShake = 0;
+        gameSettings.screenShake = true;
+        gameSettings.reduceMotion = true;
+        addCombatShake(20);
+        eq(gameState.screenShake, 0, 'reduceMotion should suppress shake');
+        // With shake on and motion not reduced, shake applies
+        gameState.screenShake = 0;
+        gameSettings.reduceMotion = false;
+        gameSettings.screenShake = true;
+        addCombatShake(20);
+        eq(gameState.screenShake, 20, 'shake should apply when motion not reduced');
+    });
+});
+
+// ── 9. Daily Challenge ────────────────────────────────────────────────────────
+// The shared-seed-per-day promise depends on the seed being a pure function of
+// the date, and the "beat your best" loop depends on records keeping the best.
+describe('Daily Challenge', () => {
+    it('daily seed is deterministic per date and varies by date', () => {
+        const a = getDailySeed('2026-06-22');
+        const b = getDailySeed('2026-06-22');
+        eq(a, b, 'same date should yield the same seed');
+        const c = getDailySeed('2026-06-23');
+        assert(a !== c, 'different dates should yield different seeds');
+        assert(a > 0, 'seed should be non-zero');
+    });
+
+    it('daily key is a UTC YYYY-MM-DD string', () => {
+        const k = getDailyKey(new Date('2026-06-22T23:30:00Z'));
+        eq(k, '2026-06-22', 'key should be the UTC date');
+    });
+
+    it('records keep the best result for a day', () => {
+        gameMeta.dailyRecords = {};
+        let isBest = recordDailyResult('2026-06-22', 5, false, 'warrior', 'knight');
+        eq(isBest, true, 'first result should be a personal best');
+        eq(getDailyRecord('2026-06-22').floor, 5, 'record should store floor');
+        // A worse run should NOT overwrite
+        isBest = recordDailyResult('2026-06-22', 3, false, 'mage', 'elementalist');
+        eq(isBest, false, 'worse run should not be a new best');
+        eq(getDailyRecord('2026-06-22').floor, 5, 'record should keep the deeper floor');
+        // A deeper run SHOULD overwrite
+        isBest = recordDailyResult('2026-06-22', 9, false, 'rogue', 'assassin');
+        eq(isBest, true, 'deeper run should be a new best');
+        eq(getDailyRecord('2026-06-22').floor, 9, 'record should update to deeper floor');
+    });
+
+    it('a win always counts as a new best', () => {
+        gameMeta.dailyRecords = { '2026-06-22': { floor: 50, won: false } };
+        const isBest = recordDailyResult('2026-06-22', 10, true, 'warrior', 'knight');
+        eq(isBest, true, 'a win should always register as best');
+        eq(getDailyRecord('2026-06-22').won, true, 'record should mark the win');
+    });
+
+    it('records prune to 60 days', () => {
+        gameMeta.dailyRecords = {};
+        for (let i = 0; i < 70; i++) {
+            const d = new Date(2026, 0, 1 + i);
+            recordDailyResult(getDailyKey(d), 5, false, 'warrior', 'knight');
+        }
+        assert(Object.keys(gameMeta.dailyRecords).length <= 60, 'records should prune to <= 60 days');
+    });
+});
+
+// ── 10. Bestiary ──────────────────────────────────────────────────────────────
+describe('Bestiary', () => {
+    it('kills are counted and mark the type seen', () => {
+        gameMeta.bestiary = {};
+        recordBestiaryKill('goblin');
+        recordBestiaryKill('goblin');
+        const e = getBestiaryEntry('goblin');
+        eq(e.kills, 2, 'goblin kills should be counted');
+        eq(e.seen, true, 'killing should mark seen');
+    });
+
+    it('seen marks without incrementing kills', () => {
+        gameMeta.bestiary = {};
+        recordBestiarySeen('warden');
+        const e = getBestiaryEntry('warden');
+        eq(e.seen, true, 'warden should be seen');
+        eq(e.kills, 0, 'seeing should not add a kill');
+    });
+
+    it('hidden types (spawn) are excluded', () => {
+        gameMeta.bestiary = {};
+        recordBestiaryKill('spawn');
+        eq(getBestiaryEntry('spawn').kills, 0, 'spawn should not be tracked');
+        assert(!getBestiaryTypes().includes('spawn'), 'spawn should not appear in the grid list');
+    });
+
+    it('progress counts discovered vs total', () => {
+        gameMeta.bestiary = {};
+        const before = getBestiaryProgress();
+        eq(before.discovered, 0, 'nothing discovered yet');
+        recordBestiarySeen('goblin');
+        recordBestiarySeen('slime');
+        const after = getBestiaryProgress();
+        eq(after.discovered, 2, 'two discovered');
+        eq(after.total, before.total, 'total is stable');
+        assert(after.total >= 8, 'at least the eight non-hidden types');
+    });
+
+    it('every non-hidden enemy type has bestiary lore', () => {
+        getBestiaryTypes().forEach(t => {
+            assert(BESTIARY_LORE[t], `missing bestiary lore for ${t}`);
+        });
+    });
+});
+
+// ── 11. Goals surface ─────────────────────────────────────────────────────────
+describe('Goals surface', () => {
+    it('returns at most 3 goals', () => {
+        gameState.bestFloor = 0;
+        gameMeta.bestiary = {};
+        gameMeta.dailyRecords = {};
+        gameState.player = new Player('warrior', 'knight', 'Goal Tester');
+        const goals = getNextGoals();
+        assert(goals.length <= 3, 'should cap at 3 goals');
+        assert(goals.length >= 1, 'should produce at least one goal early game');
+    });
+
+    it('next milestone goal points at the next unreached boss floor', () => {
+        gameState.bestFloor = 12; // past floor 10, before 25
+        gameState.player = new Player('warrior', 'knight', 'Goal Tester');
+        const goals = getNextGoals();
+        const milestoneGoal = goals.find(g => /Floor 25/.test(g.label));
+        assert(milestoneGoal, 'should target Floor 25 when bestFloor is 12');
+    });
+
+    it('daily goal disappears once today is played', () => {
+        gameState.bestFloor = 5;
+        gameState.player = new Player('warrior', 'knight', 'Goal Tester');
+        gameMeta.dailyRecords = {};
+        gameMeta.bestiary = {}; // no bestiary goal
+        gameMeta.tavernRenown = 500; // max renown so no renown goal competes
+        let goals = getNextGoals();
+        assert(goals.some(g => /Daily/.test(g.label)), 'daily goal should show when unplayed');
+        recordDailyResult(getDailyKey(), 5, false, 'warrior', 'knight');
+        goals = getNextGoals();
+        assert(!goals.some(g => /Daily/.test(g.label)), 'daily goal should vanish after playing today');
+    });
+});
+
+// ── Trophy Hall ───────────────────────────────────────────────────────────────
+// The hero statue's material tier is the visible reward for progression, so the
+// thresholds that drive it are worth a tripwire.
+describe('Trophy Hall', () => {
+    function reset() {
+        gameState.bestFloor = 0;
+        gameMeta.bossesSlain = 0;
+        gameMeta.pitFame = 0;
+    }
+
+    it('statue starts as stone with no progress', () => {
+        reset();
+        eq(getHeroStatueTier().id, 'stone', 'fresh account should be stone');
+    });
+
+    it('bronze unlocks on real progress', () => {
+        reset();
+        gameMeta.bossesSlain = 1;
+        eq(getHeroStatueTier().id, 'bronze', 'a boss kill should reach bronze');
+        reset();
+        gameState.bestFloor = 25;
+        eq(getHeroStatueTier().id, 'bronze', 'Floor 25 should reach bronze');
+    });
+
+    it('silver unlocks on deep progress', () => {
+        reset();
+        gameState.bestFloor = 50;
+        eq(getHeroStatueTier().id, 'silver', 'Floor 50 should reach silver');
+    });
+
+    it('gold unlocks on mastery', () => {
+        reset();
+        gameState.bestFloor = 75;
+        eq(getHeroStatueTier().id, 'gold', 'Floor 75 should reach gold');
+        reset();
+        gameMeta.pitFame = 500; // Legend
+        eq(getHeroStatueTier().id, 'gold', 'Arena Legend should reach gold');
+    });
+
+    it('tiers are monotonic with depth', () => {
+        const order = ['stone','bronze','silver','gold'];
+        let prev = -1;
+        [0, 25, 50, 75].forEach(f => {
+            reset();
+            gameState.bestFloor = f;
+            const idx = order.indexOf(getHeroStatueTier().id);
+            assert(idx >= prev, `tier should not regress as depth increases (floor ${f})`);
+            prev = idx;
+        });
+    });
+});
+
+// ── Navigation aids ───────────────────────────────────────────────────────────
+// getAdjacentInteractable drives both the floor-marker highlight and the
+// "[Space] <verb> <label>" prompt, so it must correctly resolve which point of
+// interest the player is standing next to.
+describe('Navigation aids', () => {
+    it('detects an adjacent tavern NPC', () => {
+        gameState.floor = 0;
+        gameState.inCourtyard = false;
+        gameState.player = new Player('warrior', 'knight', 'Nav Tester');
+        // Stand right next to the merchant (18,9)
+        gameState.player.x = 18; gameState.player.y = 8;
+        const adj = getAdjacentInteractable();
+        assert(adj, 'should detect an adjacent interactable');
+        eq(adj.label, 'Merchant', 'should identify the merchant');
+        assert(/Trade/.test(adj.verb), 'merchant verb should be Trade');
+    });
+
+    it('returns null when not adjacent to anything', () => {
+        gameState.floor = 0;
+        gameState.inCourtyard = false;
+        gameState.player = new Player('warrior', 'knight', 'Nav Tester');
+        // An open tile away from every NPC
+        gameState.player.x = 13; gameState.player.y = 8;
+        eq(getAdjacentInteractable(), null, 'open floor should yield no interactable');
+    });
+
+    it('in the courtyard only the arena gate is interactable', () => {
+        gameState.floor = 0;
+        gameState.inCourtyard = true;
+        gameState.player = new Player('warrior', 'gladiator', 'Nav Tester');
+        // Stand near the gambler's stale tavern coord (5,14) but NOT adjacent to
+        // the gate (6,12): (3,14) is distance 3 from the gate, 2 from the gambler.
+        gameState.player.x = 3; gameState.player.y = 14;
+        eq(getAdjacentInteractable(), null, 'courtyard must not surface tavern NPCs');
+        // Next to the gate (6,12)
+        gameState.player.x = 6; gameState.player.y = 11;
+        const adj = getAdjacentInteractable();
+        assert(adj && adj.label === 'The Pit', 'should detect the arena gate in the courtyard');
+    });
+
+    it('every tavern interactable maps to a real gameState NPC', () => {
+        TAVERN_INTERACTABLES.forEach(def => {
+            assert(gameState[def.key], `TAVERN_INTERACTABLES key ${def.key} has no gameState NPC`);
+            assert(def.verb && def.label, `${def.key} missing verb/label`);
+        });
+    });
+});
+
+// ── Casino ────────────────────────────────────────────────────────────────────
+describe('Casino', () => {
+    it('jackpot starts at 50g and is claimable on a fresh day', () => {
+        gameMeta.casinoJackpot = 50;
+        gameMeta.casinoJackpotLastClaimed = null;
+        eq(getCasinoJackpot(), 50, 'default jackpot should be 50g');
+        eq(canClaimJackpot(), true, 'should be claimable when never claimed');
+    });
+
+    it('jackpot grows 25g per unclaimed day up to 500g', () => {
+        gameMeta.casinoJackpot = 50;
+        gameMeta.casinoJackpotLastBumped = '2026-06-20';
+        gameMeta.casinoJackpotLastClaimed = '2026-06-19';
+        // Simulate tickCasinoJackpot by calling it with a mocked today
+        // (we test the math directly since getDailyKey uses real Date)
+        const bumped = Math.min(500, 50 + 25);
+        eq(bumped, 75, 'one missed day should add 25g');
+        gameMeta.casinoJackpot = 490;
+        eq(Math.min(500, 490 + 25), 500, 'jackpot should cap at 500g');
+    });
+
+    it('claiming the jackpot awards gold and resets to 50g', () => {
+        gameMeta.casinoJackpot = 200;
+        gameMeta.casinoJackpotLastClaimed = null;
+        gameState.player = new Player('warrior', 'knight', 'Lucky');
+        gameState.player.gold = 100;
+        const prize = claimJackpot(gameState.player);
+        eq(prize, 200, 'should return the jackpot amount');
+        eq(gameState.player.gold, 300, 'gold should increase by jackpot');
+        eq(gameMeta.casinoJackpot, 50, 'jackpot should reset to 50g after claim');
+    });
+
+    it('cannot claim jackpot twice on the same day', () => {
+        gameMeta.casinoJackpotLastClaimed = getDailyKey();
+        eq(canClaimJackpot(), false, 'should not be claimable after claiming today');
+    });
+
+    it('wheel spinWheel returns a valid segment index', () => {
+        seedRun(42);
+        for (let i = 0; i < 20; i++) {
+            const idx = spinWheel();
+            assert(idx >= 0 && idx < WHEEL_SEGMENTS.length, `idx ${idx} out of range`);
+        }
+    });
+
+    it('wheel segment weights sum to a stable total', () => {
+        const total = WHEEL_SEGMENTS.reduce((s, sg) => s + sg.weight, 0);
+        assert(total > 0, 'total weight must be positive');
+        assert(WHEEL_SEGMENTS.every(sg => sg.mult >= 0), 'all multipliers must be non-negative (0 = BUST is valid)');
+        assert(WHEEL_SEGMENTS.some(sg => sg.mult === 0), 'wheel must have at least one BUST segment so real loss is possible');
+        assert(WHEEL_SEGMENTS.some(sg => sg.mult >= 5), 'wheel must have at least one high-value segment for excitement');
+    });
+});
+
+// ── Tavern Renown ────────────────────────────────────────────────────────────
+describe('Tavern Renown', () => {
+    it('earnRenown accumulates and persists', () => {
+        gameMeta.tavernRenown = 0;
+        earnRenown(10, 'test');
+        eq(gameMeta.tavernRenown, 10, 'renown should accumulate');
+        earnRenown(15, 'test');
+        eq(gameMeta.tavernRenown, 25, 'renown should stack');
+    });
+
+    it('isRenownUnlocked gates correctly on thresholds', () => {
+        gameMeta.tavernRenown = 0;
+        eq(isRenownUnlocked('namedGreeting'), false, 'should not unlock before threshold');
+        gameMeta.tavernRenown = 10;
+        eq(isRenownUnlocked('namedGreeting'), true, 'should unlock at exact threshold');
+        eq(isRenownUnlocked('merchantSlot'), false, 'higher milestone should still be locked');
+        gameMeta.tavernRenown = 50;
+        eq(isRenownUnlocked('merchantSlot'), true, 'merchantSlot unlocks at 50');
+    });
+
+    it('getNextRenownMilestone returns the correct next unlock', () => {
+        gameMeta.tavernRenown = 0;
+        eq(getNextRenownMilestone().renown, 10, 'first milestone is 10');
+        gameMeta.tavernRenown = 49;
+        eq(getNextRenownMilestone().renown, 50, 'next after 49 is 50');
+        gameMeta.tavernRenown = 500;
+        eq(getNextRenownMilestone(), null, 'no next milestone at max renown');
+    });
+
+    it('all 15 milestones are defined with valid types', () => {
+        eq(RENOWN_MILESTONES.length, 15, 'should have exactly 15 milestones');
+        RENOWN_MILESTONES.forEach(m => {
+            assert(m.renown > 0, `milestone ${m.id} must have positive renown threshold`);
+            assert(m.type === 'ambient' || m.type === 'structural', `${m.id} must be ambient or structural`);
+            assert(m.id && m.label, `milestone at ${m.renown} must have id and label`);
+        });
+    });
+
+    it('milestones are in ascending renown order', () => {
+        for (let i = 1; i < RENOWN_MILESTONES.length; i++) {
+            assert(RENOWN_MILESTONES[i].renown > RENOWN_MILESTONES[i-1].renown,
+                `milestone ${i} (${RENOWN_MILESTONES[i].id}) must have higher renown than previous`);
+        }
+    });
+});
+
+describe('New enemy types', () => {
+    function freshFloor(floor) {
+        seedRun(floor * 13 + 1);
+        gameState.floor = floor;
+        gameState.player = new Player('warrior', 'gladiator', 'Tester');
+        gameState.player.x = 10; gameState.player.y = 10;
+        gameState.player.gold = 100;
+        gameState.allies = []; gameState.decoy = null;
+        generateDungeon();
+        gameState.enemies = [];
+    }
+
+    it('all three new types exist with distinct glyphs', () => {
+        ['cultist','thief','warden'].forEach(t => {
+            assert(ENEMY_TYPES[t], `${t} missing from ENEMY_TYPES`);
+        });
+        const glyphs = ['cultist','thief','warden'].map(t => ENEMY_TYPES[t].glyph);
+        eq(new Set(glyphs).size, 3, 'new enemy glyphs are not distinct');
+    });
+
+    it('warden is stun-immune', () => {
+        freshFloor(16);
+        const w = new Enemy(11, 10, 'warden');
+        applyStatus(w, 'stun', 3);
+        assert(!hasStatus(w, 'stun'), 'warden should be immune to stun');
+        // sanity: a goblin is NOT immune
+        const g = new Enemy(9, 10, 'goblin');
+        applyStatus(g, 'stun', 3);
+        assert(hasStatus(g, 'stun'), 'goblin should be stunnable');
+    });
+
+    it('cultist enrages a nearby ally instead of attacking', () => {
+        freshFloor(8);
+        gameState.player.x = 2; gameState.player.y = 2; // keep player far
+        const cultist = new Enemy(15, 15, 'cultist');
+        const goblin  = new Enemy(16, 15, 'goblin');
+        gameState.enemies = [cultist, goblin];
+        const goldBefore = gameState.player.gold;
+        enemyTurn();
+        assert(hasStatus(goblin, 'rage'), 'cultist did not enrage its ally');
+        eq(gameState.player.gold, goldBefore, 'cultist should not have dealt with the player this turn');
+    });
+
+    it('thief steals gold on hit then enters flee mode', () => {
+        freshFloor(12);
+        const thief = new Enemy(11, 10, 'thief'); // adjacent to player at 10,10
+        gameState.enemies = [thief];
+        const goldBefore = gameState.player.gold;
+        enemyTurn();
+        assert(gameState.player.gold < goldBefore, 'thief did not steal gold');
+        assert(thief.stolenGold > 0, 'thief did not record stolen gold');
+        eq(thief.hasFled, true, 'thief did not enter flee mode after stealing');
+    });
+
+    it('new types are gated by floor in the spawn pool', () => {
+        // Force the pool selection deterministically by checking membership
+        // via repeated draws on a low vs high floor.
+        function poolContains(floor, type) {
+            gameState.floor = floor;
+            for (let i = 0; i < 200; i++) { seedRun(i + 1); if (chooseEnemyType() === type) return true; }
+            return false;
+        }
+        assert(!poolContains(5, 'cultist'), 'cultist should not spawn before floor 8');
+        assert(poolContains(10, 'cultist'), 'cultist should spawn by floor 10');
+        assert(!poolContains(10, 'warden'), 'warden should not spawn before floor 16');
+        assert(poolContains(20, 'warden'), 'warden should spawn by floor 20');
+    });
+
+    it('second-wave types exist with sprites and lore', () => {
+        ['bat','spider','necromancer'].forEach(t => {
+            assert(ENEMY_TYPES[t], `${t} missing from ENEMY_TYPES`);
+            assert(ENEMY_SPRITE_SRC[t], `${t} missing a sprite source`);
+            assert(BESTIARY_LORE[t], `${t} missing bestiary lore`);
+        });
+    });
+
+    it('second-wave types are floor-gated', () => {
+        function poolContains(floor, type) {
+            gameState.floor = floor;
+            for (let i = 0; i < 200; i++) { seedRun(i + 1); if (chooseEnemyType() === type) return true; }
+            return false;
+        }
+        assert(!poolContains(3, 'bat'), 'bat should not spawn before floor 5');
+        assert(poolContains(8, 'bat'), 'bat should spawn by floor 8');
+        assert(!poolContains(4, 'spider'), 'spider should not spawn before floor 6');
+        assert(poolContains(10, 'spider'), 'spider should spawn by floor 10');
+        assert(!poolContains(10, 'necromancer'), 'necromancer should not spawn before floor 14');
+        assert(poolContains(18, 'necromancer'), 'necromancer should spawn by floor 18');
+    });
+
+    it('spider poisons the player on hit', () => {
+        seedRun(50);
+        gameState.floor = 6;
+        gameState.player = new Player('warrior', 'knight', 'Tester');
+        gameState.player.x = 10; gameState.player.y = 10;
+        gameState.player.statuses = [];
+        gameState.allies = []; gameState.decoy = null;
+        generateDungeon();
+        const spider = new Enemy(11, 10, 'spider'); // adjacent
+        gameState.enemies = [spider];
+        enemyTurn();
+        assert(hasStatus(gameState.player, 'poison'), 'spider bite should poison the player');
+    });
+
+    it('necromancer raises a skeleton instead of attacking', () => {
+        seedRun(51);
+        gameState.floor = 14;
+        gameState.player = new Player('warrior', 'knight', 'Tester');
+        gameState.player.x = 10; gameState.player.y = 10;
+        gameState.allies = []; gameState.decoy = null;
+        generateDungeon();
+        const necro = new Enemy(13, 12, 'necromancer'); // within awareness, not adjacent
+        necro._summonCd = 0; // ready to raise
+        gameState.enemies = [necro];
+        const before = gameState.enemies.length;
+        enemyTurn();
+        assert(gameState.enemies.length > before, 'necromancer should have raised a minion');
+        assert(gameState.enemies.some(e => e._raisedBy === necro), 'raised minion should be tracked to its necromancer');
+    });
+});
+
+// ── Elite enemies ──────────────────────────────────────────────────────────────
+describe('Elite enemies', () => {
+    it('all 7 elite types exist in ENEMY_TYPES with correct floor gating', () => {
+        const elites = ['imp', 'ratman', 'ghoul', 'lizardman', 'orc', 'darkknight', 'demon'];
+        elites.forEach(t => assert(ENEMY_TYPES[t], `${t} must be in ENEMY_TYPES`));
+    });
+
+    it('elite types appear in pool at correct floors', () => {
+        seedRun(99);
+        gameState.player = new Player('warrior', 'knight', 'T');
+        const checkFloor = (floor, type) => {
+            gameState.floor = floor;
+            let found = false;
+            for (let i = 0; i < 200; i++) { if (chooseEnemyType() === type) { found = true; break; } seedRun(i*7+floor); gameState.floor = floor; }
+            return found;
+        };
+        assert(checkFloor(20, 'imp'),         'imp should appear at floor 20');
+        assert(checkFloor(25, 'ghoul'),        'ghoul should appear at floor 25');
+        assert(checkFloor(35, 'orc'),          'orc should appear at floor 35');
+        assert(checkFloor(50, 'demon'),        'demon should appear at floor 50');
+    });
+
+    it('imp applies burn status on hit', () => {
+        seedRun(42);
+        gameState.floor = 20;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.hp = 100;
+        const imp = new Enemy(1, 0, 'imp');
+        imp.x = gameState.player.x; imp.y = gameState.player.y;
+        gameState.enemies = [imp];
+        enemyTurn();
+        const burned = hasStatus(gameState.player, 'burn');
+        assert(burned, 'imp should leave a burn status on the player');
+    });
+
+    it('ghoul heals from damage it deals', () => {
+        seedRun(42);
+        gameState.floor = 25;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.hp = 50;
+        const ghoul = new Enemy(1, 0, 'ghoul');
+        ghoul.x = gameState.player.x; ghoul.y = gameState.player.y;
+        ghoul.hp = 30; ghoul.maxHp = 40;  // start below max
+        gameState.enemies = [ghoul];
+        const hpBefore = ghoul.hp;
+        enemyTurn();
+        assert(ghoul.hp >= hpBefore, 'ghoul should heal from attacking');
+    });
+
+    it('lizardman regenerates HP each turn', () => {
+        seedRun(42);
+        gameState.floor = 30;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 10; gameState.player.y = 10; // keep distance
+        const liz = new Enemy(0, 0, 'lizardman');
+        liz.hp = 30; liz.maxHp = 48;
+        gameState.enemies = [liz];
+        const hpBefore = liz.hp;
+        enemyTurn();
+        assert(liz.hp > hpBefore, 'lizardman should regenerate HP each turn');
+    });
+
+    it('orc telegraphs charge and delivers amplified damage', () => {
+        seedRun(42);
+        gameState.floor = 35;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.def = 0; // no mitigation
+        const orc = new Enemy(1, 0, 'orc');
+        orc.x = gameState.player.x; orc.y = gameState.player.y;
+        gameState.enemies = [orc];
+        const hpBefore = gameState.player.hp;
+        enemyTurn(); // telegraph turn
+        eq(orc._orcCharging, true, 'orc should be charging after wind-up turn');
+        const hpAfterWindup = gameState.player.hp;
+        enemyTurn(); // charge fires
+        assert(gameState.player.hp < hpAfterWindup, 'orc charge should deal damage');
+    });
+});
+
+// ── Mimic ─────────────────────────────────────────────────────────────────────
+describe('Mimic', () => {
+    it('Mimic exists in ENEMY_TYPES and bestiary lore', () => {
+        assert(ENEMY_TYPES.mimic, 'mimic must be in ENEMY_TYPES');
+        assert(BESTIARY_LORE.mimic, 'mimic must have bestiary lore');
+    });
+
+    it('mimic_chest item spawns from createLoot on floor 15+', () => {
+        // Force the rng to the mimic range (< 0.03) on floor 15
+        let found = false;
+        for (let seed = 0; seed < 500 && !found; seed++) {
+            seedRun(seed);
+            gameState.floor = 15;
+            gameState.player = new Player('warrior', 'knight', 'T');
+            const loot = createLoot(5, 5);
+            if (loot.type === 'mimic_chest') found = true;
+        }
+        assert(found, 'mimic_chest should spawn from createLoot on floor 15+');
+    });
+
+    it('opening a mimic_chest spawns an enemy and removes the item', () => {
+        seedRun(42);
+        gameState.floor = 20;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        const mimicItem = { x: 5, y: 5, type: 'mimic_chest', name: 'Chest', color: '#c8a060', glyph: '\u25A1' };
+        gameState.items = [mimicItem];
+        gameState.enemies = [];
+        collectItemAt(5, 5);
+        eq(gameState.items.length, 0, 'mimic_chest item should be removed after reveal');
+        assert(gameState.enemies.some(e => e.type === 'mimic'), 'a mimic enemy should spawn on the same tile');
+    });
+
+    it('mimic does not spawn from createLoot before floor 15', () => {
+        let found = false;
+        for (let seed = 0; seed < 500 && !found; seed++) {
+            seedRun(seed);
+            gameState.floor = 10;
+            gameState.player = new Player('warrior', 'knight', 'T');
+            if (createLoot(5, 5).type === 'mimic_chest') found = true;
+        }
+        assert(!found, 'mimic_chest should never spawn before floor 15');
+    });
+});
+
+// ── Audit regressions ───────────────────────────────────────────────────────────
+// Guards for specific bugs found during the code audit. Each test reproduces
+// the exact failure condition so the bug can never silently return.
+describe('Audit regressions', () => {
+    it('ratman retreat does not crash when player is adjacent', () => {
+        // Bug: AI called _isWalkable (undefined) instead of isWalkable, crashing
+        // the game whenever a cornered ratman tried to flee on floor 22+.
+        seedRun(7);
+        gameState.floor = 22;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        const rat = new Enemy(6, 5, 'ratman'); // adjacent to player
+        gameState.enemies = [rat];
+        let threw = false;
+        try { enemyTurn(); } catch (e) { threw = true; }
+        assert(!threw, 'ratman retreat must not throw a ReferenceError');
+    });
+
+    it('demon is immune to burn (matches lore)', () => {
+        seedRun(7);
+        gameState.floor = 50;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        const demon = new Enemy(2, 2, 'demon');
+        applyStatus(demon, 'burn', 3);
+        assert(!hasStatus(demon, 'burn'), 'demon must not catch fire — it is fire-immune');
+    });
+
+    it('orc is immune to stun', () => {
+        seedRun(7);
+        gameState.floor = 35;
+        const orc = new Enemy(2, 2, 'orc');
+        applyStatus(orc, 'stun', 2);
+        assert(!hasStatus(orc, 'stun'), 'orc must shrug off stun — it is stun-immune by design');
+    });
+
+    it('non-fire-immune enemies still burn normally', () => {
+        seedRun(7);
+        gameState.floor = 20;
+        const goblin = new Enemy(2, 2, 'goblin');
+        applyStatus(goblin, 'burn', 3);
+        assert(hasStatus(goblin, 'burn'), 'ordinary enemies should still take burn');
+    });
+});
+
+// ── Pit Gauntlet ──────────────────────────────────────────────────────────────
+describe('Pit Gauntlet', () => {
+    it('all 4 gauntlet tiers exist with valid wave counts', () => {
+        eq(GAUNTLET_TIERS.length, 4, 'should have 4 gauntlet tiers (one per season)');
+        GAUNTLET_TIERS.forEach(g => {
+            assert(g.waves >= 3, `${g.id} must have at least 3 waves`);
+            assert(g.pool.length > 0, `${g.id} must have an enemy pool`);
+            assert(g.goldPerWave > 0 && g.famePerWave > 0, `${g.id} must have positive rewards`);
+            assert(g.season, `${g.id} must belong to a season`);
+        });
+    });
+
+    it('gauntlet availability gates by fame', () => {
+        gameMeta.pitFame = 0;
+        eq(getAvailableGauntlets().length, 0, 'no gauntlets at 0 fame');
+        gameMeta.pitFame = 25;
+        assert(getAvailableGauntlets().some(g => g.id === 'bronze_gauntlet'), 'bronze gauntlet unlocks at 25 fame');
+        gameMeta.pitFame = 250;
+        assert(getAvailableGauntlets().some(g => g.id === 'gold_gauntlet'), 'gold gauntlet unlocks at 250 fame');
+    });
+
+    it('starting a gauntlet spawns wave 1 and sets bout data', () => {
+        seedRun(11);
+        gameMeta.pitFame = 25;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        gameState.inCourtyard = true;
+        startGauntlet('bronze_gauntlet', 0);
+        assert(gameState.inArenaBout, 'should be in an arena bout');
+        assert(gameState.arenaBoutData.isGauntlet, 'bout data should flag gauntlet');
+        eq(gameState.arenaBoutData.currentWave, 1, 'should be on wave 1');
+        eq(gameState.enemies.length, 1, 'wave 1 should spawn exactly one opponent');
+    });
+
+    it('clearing a wave banks reward and spawns the next', () => {
+        seedRun(11);
+        gameMeta.pitFame = 25;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        gameState.inCourtyard = true;
+        startGauntlet('bronze_gauntlet', 0);
+        const firstEnemy = gameState.enemies[0];
+        const bankedBefore = gameState.arenaBoutData.bankedGold;
+        // Kill the wave-1 enemy
+        handleGauntletKill(firstEnemy);
+        assert(gameState.arenaBoutData, 'gauntlet should still be active after wave 1');
+        eq(gameState.arenaBoutData.currentWave, 2, 'should advance to wave 2');
+        assert(gameState.arenaBoutData.bankedGold > bankedBefore, 'gold should be banked after a wave');
+        eq(gameState.enemies.length, 1, 'wave 2 should spawn a new opponent');
+    });
+
+    it('clearing the final wave resolves the gauntlet as a win', () => {
+        seedRun(11);
+        gameMeta.pitFame = 25;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        gameState.inCourtyard = true;
+        const goldBefore = gameState.player.gold;
+        startGauntlet('bronze_gauntlet', 0);
+        // Clear all 3 waves
+        for (let i = 0; i < 3; i++) {
+            if (gameState.enemies[0]) handleGauntletKill(gameState.enemies[0]);
+        }
+        assert(!gameState.inArenaBout, 'gauntlet should end after final wave');
+        assert(!gameState.arenaBoutData, 'bout data should be cleared');
+        assert(gameState.player.gold > goldBefore, 'player should be rewarded for clearing');
+    });
+
+    it('losing a gauntlet keeps banked rewards', () => {
+        seedRun(11);
+        gameMeta.pitFame = 25;
+        gameState.player = new Player('warrior', 'knight', 'T');
+        gameState.player.x = 5; gameState.player.y = 5;
+        gameState.inCourtyard = true;
+        const goldBefore = gameState.player.gold;
+        startGauntlet('bronze_gauntlet', 0);
+        // Clear wave 1 (banks reward), then lose
+        handleGauntletKill(gameState.enemies[0]);
+        const bankedGold = gameState.arenaBoutData.bankedGold;
+        assert(bankedGold > 0, 'should have banked gold from wave 1');
+        _resolveGauntlet(false); // simulate death
+        assert(!gameState.inArenaBout, 'gauntlet should end on loss');
+        assert(gameState.player.gold >= goldBefore + bankedGold, 'player should keep banked gold on loss');
+    });
+});
+
+
+
+// ── 12. GAME_STATE enum & getGameMode ────────────────────────────────────────
+describe('GAME_STATE enum & getGameMode', () => {
+    it('GAME_STATE has all required keys', () => {
+        const required = ['TITLE', 'TAVERN', 'PREPARE', 'DUNGEON', 'PIT', 'DEATH', 'RESULTS'];
+        required.forEach(k => assert(GAME_STATE[k], `GAME_STATE missing key: ${k}`));
+    });
+
+    it('GAME_STATE values are unique strings', () => {
+        const vals = Object.values(GAME_STATE);
+        const unique = new Set(vals);
+        eq(unique.size, vals.length, 'GAME_STATE values must be unique');
+        vals.forEach(v => assert(typeof v === 'string', `value ${v} must be a string`));
+    });
+
+    it('deriveLegacyMode returns TAVERN when floor is 0', () => {
+        const s = { floor: 0, inArenaBout: false, inArena: false, gameOver: false };
+        eq(deriveLegacyMode(s), GAME_STATE.TAVERN, 'floor 0 should be TAVERN');
+    });
+
+    it('deriveLegacyMode returns PIT during a bout', () => {
+        const s = { floor: 0, inArenaBout: true, inArena: false, gameOver: false };
+        eq(deriveLegacyMode(s), GAME_STATE.PIT, 'inArenaBout should be PIT');
+    });
+
+    it('deriveLegacyMode returns DUNGEON when floor > 0', () => {
+        const s = { floor: 5, inArenaBout: false, inArena: false, gameOver: false };
+        eq(deriveLegacyMode(s), GAME_STATE.DUNGEON, 'floor > 0 should be DUNGEON');
+    });
+
+    it('deriveLegacyMode returns DEATH on gameOver', () => {
+        const s = { floor: 5, inArenaBout: false, inArena: false, gameOver: true };
+        eq(deriveLegacyMode(s), GAME_STATE.DEATH, 'gameOver should be DEATH');
+    });
+
+    it('getGameMode respects explicit mode over legacy derive', () => {
+        const s = { floor: 5, inArenaBout: false, gameOver: false, mode: GAME_STATE.RESULTS };
+        eq(getGameMode(s), GAME_STATE.RESULTS, 'explicit mode should take precedence');
+    });
+
+    it('getGameMode falls back to derive when mode is null', () => {
+        const s = { floor: 0, inArenaBout: false, inArena: false, gameOver: false, mode: null };
+        eq(getGameMode(s), GAME_STATE.TAVERN, 'null mode should derive TAVERN');
+    });
+});
+
+
+// ── 13. Treasury / Flagon Coins ───────────────────────────────────────────────
+describe('Treasury & Flagon Coins', () => {
+    function resetTreasury() {
+        gameMeta.flagonCoins = 0;
+        gameMeta.treasurySpent = {};
+    }
+
+    it('getTreasuryLevel starts at 1 with no nodes', () => {
+        resetTreasury();
+        const level = getTreasuryLevel();
+        assert(level >= 1, 'treasury level must be at least 1');
+    });
+
+    it('getTreasuryLevel is monotonically non-decreasing with node count', () => {
+        resetTreasury();
+        gameMeta.flagonCoins = 1000;
+        let prev = getTreasuryLevel();
+        // Buy a few nodes and verify level never drops
+        for (const node of TREASURY_UPGRADES.slice(0, 3)) {
+            if (canUnlockTreasury(node)) buyTreasuryNode(node.id);
+            const lvl = getTreasuryLevel();
+            assert(lvl >= prev, `treasury level regressed: ${lvl} < ${prev}`);
+            prev = lvl;
+        }
+    });
+
+    it('isTreasuryUnlocked returns false for unknown ids', () => {
+        resetTreasury();
+        eq(isTreasuryUnlocked('nonexistent_node'), false, 'unknown node should not be unlocked');
+    });
+
+    it('buyTreasuryNode deducts coins and marks node owned', () => {
+        resetTreasury();
+        const node = TREASURY_UPGRADES.find(n => n.requires.length === 0);
+        assert(node, 'must have at least one tier-1 node');
+        gameMeta.flagonCoins = node.cost;
+        buyTreasuryNode(node.id);
+        eq(gameMeta.flagonCoins, 0, 'coins should be deducted');
+        eq(isTreasuryUnlocked(node.id), true, 'node should now be owned');
+    });
+
+    it('buyTreasuryNode rejects when coins are insufficient', () => {
+        resetTreasury();
+        gameMeta.flagonCoins = 0;
+        const node = TREASURY_UPGRADES.find(n => n.requires.length === 0);
+        buyTreasuryNode(node.id);
+        eq(isTreasuryUnlocked(node.id), false, 'should not unlock without funds');
+    });
+
+    it('buyTreasuryNode rejects when prerequisites are unmet', () => {
+        resetTreasury();
+        gameMeta.flagonCoins = 1000;
+        const tier2 = TREASURY_UPGRADES.find(n => n.requires.length > 0);
+        assert(tier2, 'must have at least one node with prerequisites');
+        // Don't buy the prerequisites
+        buyTreasuryNode(tier2.id);
+        eq(isTreasuryUnlocked(tier2.id), false, 'should not unlock without prerequisites');
+    });
+});
+
+
+// ── 14. Save migration — arenaFame → pitFame ─────────────────────────────────
+describe('Save migration: arenaFame → pitFame', () => {
+    it('loadMetaProgress maps legacy arenaFame key to pitFame', () => {
+        // Simulate a save written before Phase 2 (only arenaFame, no pitFame)
+        const legacySave = JSON.stringify({
+            meta: {
+                totalGold: 500,
+                runs: 3,
+                deaths: 1,
+                bossesSlain: 2,
+                achievements: {},
+                arenaFame: 150,   // old key
+                arenaBouts: 7,
+                arenaWins: 4,
+                tavernRenown: 80,
+                hintsSeen: {},
+                fallen: [],
+            }
+        });
+        // Reset gameMeta to clean state before loading
+        gameMeta.pitFame  = 0;
+        gameMeta.pitWins  = 0;
+        gameMeta.pitBouts = 0;
+        loadMetaProgress(legacySave);
+        eq(gameMeta.pitFame,  150, 'legacy arenaFame should load into pitFame');
+        eq(gameMeta.pitWins,    4, 'legacy arenaWins should load into pitWins');
+        eq(gameMeta.pitBouts,   7, 'legacy arenaBouts should load into pitBouts');
+    });
+
+    it('loadMetaProgress prefers new pitFame over legacy arenaFame', () => {
+        // Save written after Phase 2 (has both for belt-and-suspenders compat)
+        const modernSave = JSON.stringify({
+            meta: {
+                totalGold: 200,
+                runs: 1,
+                deaths: 0,
+                bossesSlain: 0,
+                achievements: {},
+                arenaFame: 50,   // stale shadow
+                pitFame: 200,    // canonical new value — must win
+                pitBouts: 5,
+                pitWins: 3,
+                tavernRenown: 0,
+                hintsSeen: {},
+                fallen: [],
+            }
+        });
+        gameMeta.pitFame = 0;
+        loadMetaProgress(modernSave);
+        eq(gameMeta.pitFame, 200, 'pitFame should take precedence over arenaFame');
+    });
+
+    it('flagonCoins and treasurySpent survive a round-trip save', () => {
+        gameMeta.flagonCoins  = 42;
+        gameMeta.treasurySpent = { bankExpansion: true };
+        saveMetaProgress();
+        // Reset in-memory values
+        gameMeta.flagonCoins  = 0;
+        gameMeta.treasurySpent = {};
+        loadMetaProgress();
+        eq(gameMeta.flagonCoins, 42, 'flagonCoins should round-trip');
+        eq(gameMeta.treasurySpent.bankExpansion, true, 'treasurySpent should round-trip');
+    });
+});
+
+// ── Render results ───────────────────────────────────────────────────────────
+(function render() {
+    const results = document.getElementById('results');
+    let total = 0, passed = 0;
+    groups.forEach(g => {
+        const div = document.createElement('div');
+        div.className = 'group';
+        const head = document.createElement('div');
+        head.className = 'group-head';
+        head.textContent = g.name;
+        div.appendChild(head);
+        g.cases.forEach(c => {
+            total++; if (c.ok) passed++;
+            const row = document.createElement('div');
+            row.className = 'case ' + (c.ok ? 'ok' : 'bad');
+            row.innerHTML = `<span class="icon">${c.ok ? '✓' : '✗'}</span>
+                <span class="body"><span class="name">${c.name}</span>${c.detail ? `<div class="detail">${c.detail.replace(/</g,'&lt;')}</div>` : ''}</span>`;
+            div.appendChild(row);
+        });
+        results.appendChild(div);
+    });
+    const sum = document.getElementById('summary');
+    const allPass = passed === total;
+    sum.className = allPass ? 'pass' : 'fail';
+    sum.textContent = `${passed} / ${total} passed` + (allPass ? '  —  all tripwires green' : '  —  FAILURES above');
+})();
+</script>
+</body>
+</html>

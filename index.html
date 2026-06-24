@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Broken Flagon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet"></noscript>
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Empty inline favicon — stops the browser requesting /favicon.ico -->
+    <link rel="icon" href="data:,">
+</head>
+<body>
+    <div id="game-container">
+        <div id="whats-new-panel" style="display:none;">
+            <div id="whats-new-inner">
+                <div id="whats-new-header">
+                    <h2><span class="panel-icon">&#10070;</span> What's New</h2>
+                    <button id="whats-new-close-btn" onclick="closeWhatsNew()">&#x2715; Close</button>
+                </div>
+                <div id="whats-new-body"></div>
+                <button id="whats-new-dismiss-btn" onclick="closeWhatsNew()">Got it</button>
+            </div>
+        </div>
+
+        <div id="title-screen">
+            <div id="title-bg" aria-hidden="true">
+                <canvas id="title-particles-canvas" aria-hidden="true"></canvas>
+            </div>
+            <div id="title-scrim" aria-hidden="true"></div>
+            <p id="title-production">A Crucible&#8209;Forge Production</p>
+
+            <!-- ── Lower-left: Legend Progress panel ──────────────────── -->
+            <div id="title-legend-panel">
+                <div class="tlp-header">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L10 6H15L11 9.5L12.5 15L8 11.5L3.5 15L5 9.5L1 6H6Z"/></svg>
+                    Legend Progress
+                </div>
+                <div class="tlp-rows">
+                    <div class="tlp-row">
+                        <svg class="tlp-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1C5.2 1 3 3.2 3 6c0 1.8.9 3.3 2.3 4.2V11h5v-.8C11.7 9.3 13 7.8 13 6c0-2.8-2.2-5-5-5z"/><rect x="5" y="13" width="2" height="1.5" rx=".5"/><rect x="9" y="13" width="2" height="1.5" rx=".5"/></svg>
+                        <span>Depth Reached</span><span class="tlp-val" id="ts-depth">0</span>
+                    </div>
+                    <div class="tlp-row">
+                        <svg class="tlp-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="13" x2="13" y2="3"/><line x1="13" y1="13" x2="3" y2="3"/></svg>
+                        <span>Monsters Slain</span><span class="tlp-val" id="ts-kills">0</span>
+                    </div>
+                    <div class="tlp-row">
+                        <svg class="tlp-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3.5" fill="#0c0806"/><text x="8" y="10.5" font-size="5" text-anchor="middle" fill="currentColor" font-family="serif">g</text></svg>
+                        <span>Gold Earned</span><span class="tlp-val" id="ts-gold">0</span>
+                    </div>
+                    <div class="tlp-row">
+                        <svg class="tlp-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.2 5.2H13.6L10.2 7.8L11.4 12L8 9.4L4.6 12L5.8 7.8L2.4 5.2H6.8Z"/></svg>
+                        <span>Pit Victories</span><span class="tlp-val" id="ts-arena">0</span>
+                    </div>
+                </div>
+                <div class="tlp-row">
+                    <svg class="tlp-icon" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3.5" fill="#0c0806"/><text x="8" y="10.5" font-size="5" text-anchor="middle" fill="currentColor" font-family="serif">&#9672;</text></svg>
+                    <span>Flagon Coins</span><span class="tlp-val" id="ts-coins">0</span>
+                </div>
+                <button class="tlp-btn" onclick="openStorybook()">&#128214; Read the Legend</button>
+            </div>
+
+            <!-- ── Center: main action column ─────────────────────────── -->
+            <div id="title-center-col">
+
+
+                <!-- Continue card — only shown when a run is saved -->
+                <div id="title-resume-banner" style="display:none;">
+                    <div class="tr-portrait-wrap">
+                        <img id="tr-portrait-img" src="" alt="" class="tr-portrait-img">
+                    </div>
+                    <div class="tr-body">
+                        <div class="tr-eyebrow">
+                            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="14" x2="14" y2="2"/><line x1="14" y1="14" x2="2" y2="2"/></svg>
+                            Adventure in Progress
+                        </div>
+                        <div class="tr-details">
+                            <div class="tr-left">
+                                <span class="tr-class-name" id="tr-class">Hero</span>
+                                <span class="tr-stat" id="tr-level-str">Level 1</span>
+                                <span class="tr-stat" id="tr-depth-str">Depth 0</span>
+                            </div>
+                            <div class="tr-right">
+                                <span id="tr-location">
+                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="2" y1="14" x2="14" y2="2"/><line x1="14" y1="14" x2="2" y2="2"/></svg>
+                                    The Tavern
+                                </span>
+                                <span id="tr-gold-str">
+                                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="6"/></svg>
+                                    0 Gold
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="title-resume-btn" onclick="resumeRun()">Continue Journey <span aria-hidden="true">&#8594;</span></button>
+                </div>
+
+                <!-- Primary CTA -->
+                <button id="title-begin-btn" onclick="beginAdventure()">
+                    <span aria-hidden="true">&#8592;</span> Descend into the Ash <span aria-hidden="true">&#8594;</span>
+                </button>
+
+                <!-- Icon row -->
+                <div id="title-icon-row">
+                    <button class="ti-btn" onclick="titleOpenBestiary()" title="Bestiary">
+                        <svg viewBox="0 0 32 32" fill="currentColor"><rect x="6" y="4" width="12" height="24" rx="1.5"/><rect x="18" y="4" width="8" height="24" rx="1.5" opacity=".45"/><rect x="17" y="4" width="2" height="24"/><rect x="9" y="9" width="6" height="1.5" rx=".75" fill="#0c0806"/><rect x="9" y="13" width="6" height="1.5" rx=".75" fill="#0c0806"/><rect x="9" y="17" width="4" height="1.5" rx=".75" fill="#0c0806"/></svg>
+                        <span>Bestiary</span>
+                    </button>
+                    <button class="ti-btn" onclick="openSettings()" title="Options">
+                        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="16" cy="16" r="4" fill="currentColor"/><path d="M16 5v4M16 23v4M5 16h4M23 16h4M8.1 8.1l2.8 2.8M21.1 21.1l2.8 2.8M8.1 23.9l2.8-2.8M21.1 10.9l2.8-2.8"/></svg>
+                        <span>Options</span>
+                    </button>
+                    <button class="ti-btn ti-btn-quit" onclick="titleQuit()" title="Quit">
+                        <svg viewBox="0 0 32 32" fill="none"><rect x="5" y="4" width="14" height="24" rx="1.5" fill="currentColor" opacity=".25"/><rect x="5" y="4" width="14" height="24" rx="1.5" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="16" r="1.8" fill="currentColor"/><path d="M21 16h6M24 13l3 3-3 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>Quit</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer: version + What's New -->
+            <div id="title-footer">
+                <span id="title-version"></span>
+                <button id="title-whatsnew-btn" onclick="openWhatsNew()">&#10024; What's New</button>
+            </div>
+        </div>
+
+        <!-- ── Storybook Modal ─────────────────────────────────────────────── -->
+        <div id="storybook-overlay" style="display:none;" onclick="closeStorybookOnBackdrop(event)">
+            <div id="storybook-parchment">
+                <button id="storybook-close" onclick="closeStorybook()" title="Close">&times;</button>
+                <div id="storybook-scroll">
+
+                    <div class="storybook-title-block">
+                        <div class="sb-ornament">&#10070;</div>
+                        <h1 class="storybook-title">The Legend of<br>The Broken Flagon</h1>
+                        <div class="sb-ornament">&#10070;</div>
+                    </div>
+
+                    <!-- Chapter I -->
+                    <div class="sb-chapter">
+                        <div class="sb-chapter-art" id="sb-art-1" aria-hidden="true"></div>
+                        <h2 class="sb-heading"><span class="sb-chapter-num">Chapter I</span>The Abyss</h2>
+                        <p>Long ago, a great stone fortress stood watch over a vast abyss. The Dungeon of Ash, they called it. Its walls were built not to keep invaders out — but to keep something far worse from escaping.</p>
+                        <p>As centuries passed, the fortress crumbled. Soldiers deserted their posts. Kings forgot their oaths. The ash rose and swallowed the lower halls whole.</p>
+                        <p>Only the stories remained. Of lost treasures. Forgotten kings. Cursed relics. Ancient secrets buried under a thousand feet of dark stone.</p>
+                        <p>Stories that drew fortune-seekers, mercenaries, and fools from every corner of the realm.</p>
+                    </div>
+
+                    <!-- Chapter II -->
+                    <div class="sb-chapter">
+                        <div class="sb-chapter-art" id="sb-art-2" aria-hidden="true"></div>
+                        <h2 class="sb-heading"><span class="sb-chapter-num">Chapter II</span>Barnaby the Bruiser</h2>
+                        <p>Among those drawn to the abyss was a retired warrior named Barnaby — a man who had survived more battles than he cared to remember, and drunk more ale than anyone thought possible.</p>
+                        <p>Where others saw a cursed ruin, Barnaby saw opportunity. He claimed the crumbling walls above the dungeon entrance and set to work with hammer and stubbornness.</p>
+                        <p>A place to rest. A place to drink. A place to prepare for the descent.</p>
+                        <p class="sb-italic">Barnaby grows older with every passing season. Some say he seeks a worthy successor. Others claim he knows far more about the dungeon than he admits.</p>
+                    </div>
+
+                    <!-- Chapter III -->
+                    <div class="sb-chapter">
+                        <div class="sb-chapter-art" id="sb-art-3" aria-hidden="true"></div>
+                        <h2 class="sb-heading"><span class="sb-chapter-num">Chapter III</span>The Broken Flagon</h2>
+                        <p>During the tavern's first week of business, a drunken brawl erupted between a crew of dwarven miners and a band of human sellswords.</p>
+                        <p>Flying tankards. Broken chairs. Shattered pride. The common room became a battlefield.</p>
+                        <p>At the height of the chaos, a stray warhammer smashed the tavern's prized ceramic flagon into a hundred pieces. Ale flooded the floor. Patrons cheered. Barnaby laughed until tears streamed down his face.</p>
+                        <p>Declaring the destruction a lucky omen, he mounted the shattered remains above the hearth. The name came to him that very night:</p>
+                        <p class="sb-name-reveal"><strong>The Broken Flagon.</strong></p>
+                    </div>
+
+                    <!-- Chapter IV -->
+                    <div class="sb-chapter">
+                        <div class="sb-chapter-art" id="sb-art-4" aria-hidden="true"></div>
+                        <h2 class="sb-heading"><span class="sb-chapter-num">Chapter IV</span>Your Story</h2>
+                        <p>Today the tavern stands as the last warm place before the darkness. The fires roar. The bard sings. The brewmaster pours another round.</p>
+                        <p>Beneath the cellar floor rests a massive iron grate. Beyond it lies the Dungeon of Ash — a labyrinth of monsters, forgotten kings, cursed relics, and ancient secrets.</p>
+                        <p>Every adventurer faces the same choice. Every adventurer believes they will be different.</p>
+                        <p>Few are right.</p>
+                    </div>
+
+                    <!-- Ending hook -->
+                    <div class="sb-ending">
+                        <div class="sb-divider"></div>
+                        <p class="sb-hook">Somewhere beneath the tavern, something ancient has awakened.</p>
+                        <p class="sb-hook">The cellar grate stands open.</p>
+                        <p class="sb-hook">The fire behind you is warm.</p>
+                        <p class="sb-hook sb-hook-last">The darkness ahead is not.</p>
+                        <p class="sb-question">What will you do?</p>
+                    </div>
+
+                    <!-- The Fallen -->
+                    <div id="sb-fallen-section" style="display:none;">
+                        <div class="sb-divider"></div>
+                        <h3 class="sb-fallen-title">&#9760; The Fallen</h3>
+                        <p class="sb-fallen-sub">Those who descended before you. Their stories end here.</p>
+                        <div id="sb-fallen-list"></div>
+                    </div>
+
+                    <!-- CTA -->
+                    <div class="sb-cta-block">
+                        <button class="sb-begin-btn" onclick="closeStorybook(); beginAdventure();">
+                            &#9660; Descend into the Ash
+                        </button>
+                        <p class="sb-cta-sub">The darkness awaits.</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div id="intro-video-screen" style="display:none;">
+            <video id="intro-video" preload="none" playsinline>
+                <source src="intro.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <div id="intro-video-fallback" aria-hidden="true">
+                <p id="intro-video-fallback-title">The Dungeon of Ash</p>
+                <p id="intro-video-fallback-text">intro.mp4 not found &mdash; drop the cinematic in next to index.html to play it here.</p>
+            </div>
+            <button id="intro-video-skip-btn" onclick="skipIntroVideo()">Skip &#9655;</button>
+        </div>
+
+        <!-- ── Arena entrance cutscene (plays once, first time the Pit opens) ── -->
+        <div id="arena-video-screen" style="display:none;">
+            <video id="arena-video" preload="none" playsinline>
+                <source src="Enter_the_Arena.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <div id="arena-video-fallback" aria-hidden="true">
+                <p id="arena-video-fallback-title">⚔ Enter the Arena</p>
+                <p id="arena-video-fallback-text">The crowd roars as you step into The Pit.</p>
+            </div>
+            <button id="arena-video-skip-btn" onclick="skipArenaVideo()">Skip &#9655;</button>
+        </div>
+
+        <!-- ── The Fallen God — floor 100 boss reveal ───────────────────── -->
+        <div id="fallen-god-screen" style="display:none;" onclick="dismissFallenGodReveal()">
+            <div id="fgr-bg"></div>
+            <div id="fgr-scrim"></div>
+            <div id="fgr-content">
+                <p id="fgr-eyebrow">Floor 100 &middot; Final Boss</p>
+                <h1 id="fgr-title">The Fallen God</h1>
+                <p id="fgr-desc">Reality cracks. The ash parts. Something ancient and broken fixes its gaze upon you.</p>
+                <button id="fgr-btn" onclick="event.stopPropagation(); dismissFallenGodReveal()">
+                    Face Your Destiny
+                </button>
+                <p id="fgr-hint">Click anywhere or press any key to continue</p>
+            </div>
+        </div>
+
+        <div id="class-select" style="display:none;">
+            <div id="cs-bg" aria-hidden="true">
+                <div class="cs-hearth-glow"></div>
+                <div class="cs-light-rays"></div>
+                <div class="cs-vignette"></div>
+                <div class="cs-ember cs-ember-1"></div>
+                <div class="cs-ember cs-ember-2"></div>
+                <div class="cs-ember cs-ember-3"></div>
+                <div class="cs-ember cs-ember-4"></div>
+                <div class="cs-ember cs-ember-5"></div>
+                <div class="cs-ember cs-ember-6"></div>
+            </div>
+            <div id="cs-shell">
+                <header id="cs-hero">
+                    <div class="cs-hero-brand">
+                        <p class="cs-eyebrow">Dungeon Crawler RPG</p>
+                        <div id="tavern-status" class="tavern-status" style="display:none;"></div>
+                        <h1 class="cs-title" id="cs-logo-title">
+                            <span class="cs-sign" aria-hidden="true">&#10070;</span>
+                            <span class="cs-title-stack">
+                                <span class="cs-title-main">The Broken Flagon</span>
+                                <span class="cs-title-sub">Tavern</span>
+                            </span>
+                        </h1>
+                        <p class="cs-flavor" id="cs-flavor">Many descend. Few return.</p>
+                    </div>
+                    <canvas id="cs-logo-canvas" aria-hidden="true"></canvas>
+                </header>
+
+                <div class="cs-stage">
+                    <section class="cs-panel cs-panel-classes">
+                        <div class="cs-panel-head">
+                            <h2 class="cs-panel-title">Choose Your Champion</h2>
+                            <p class="cs-panel-sub">Four paths descend. One must survive.</p>
+                        </div>
+                        <div id="cs-class-list"></div>
+                    </section>
+
+                    <!-- Run History + Leaderboard — accessible from tavern -->
+                    <div class="cs-tavern-btns">
+                        <button class="rh-toggle-btn" onclick="toggleRunHistory()">&#9776; Past Runs</button>
+                        <button class="rh-toggle-btn rh-lb-btn" onclick="if(typeof openLeaderboard==='function')openLeaderboard()">&#127942; Leaderboard</button>
+                        <button class="rh-toggle-btn" onclick="toggleSaveSlots()">&#128190; Save Slots</button>
+                    <button class="rh-toggle-btn" onclick="if(typeof openTreasury==='function')openTreasury()" title="Spend Flagon Coins on permanent upgrades">&#9672; Treasury</button>
+                    </div>
+                    <div id="run-history-panel" style="display:none;"></div>
+                    <div id="save-slots-panel" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="game-ui" style="display:none;">
+            <header id="run-progress-bar">
+                <div class="run-xp-row">
+                    <span class="run-xp-label">Lv <span id="top-player-level">1</span></span>
+                    <div class="top-xp-track" aria-label="Experience progress"><div id="top-xp-fill"></div></div>
+                    <span id="top-xp-pct">0%</span>
+                </div>
+            </header>
+
+            <div id="game-ui-main">
+            <!-- ════════════════ LEFT COLUMN — Hero data ════════════════ -->
+            <aside id="col-left">
+                <div class="panel" id="hero-panel">
+                    <div class="hero-portrait-frame">
+                        <img id="hero-portrait" class="hero-portrait-img" src="" alt=""
+                             onerror="this.style.display='none';document.getElementById('hero-portrait-fallback').style.display='flex'"
+                             onload="document.getElementById('hero-portrait-fallback').style.display='none'" />
+                        <span id="hero-portrait-fallback" class="hero-portrait-fallback" aria-hidden="true">&#9876;</span>
+                    </div>
+                    <h2><span class="panel-icon">&#9876;</span> <span id="player-class">Hero</span></h2>
+                    <div class="hero-level-row">
+                        <span class="hero-level-badge">Lv <span id="player-level">1</span></span>
+                        <div class="xp-track"><div id="xp-fill"></div></div>
+                        <span class="hero-xp-label"><span id="player-xp">0</span></span>
+                    </div>
+                </div>
+
+                <div class="panel" id="vitals-panel">
+                    <div class="vital-row">
+                        <div class="vital-label"><span class="vital-name vital-hp">&#10084; HP</span><span class="vital-nums"><span id="player-hp"></span>/<span id="player-max-hp"></span></span></div>
+                        <div class="meter meter-hp"><div id="hp-fill"></div><div class="meter-sheen"></div></div>
+                    </div>
+                    <div class="vital-row" id="mana-row">
+                        <div class="vital-label"><span class="vital-name vital-mana">&#10022; Mana</span><span class="vital-nums"><span id="player-mana"></span>/<span id="player-max-mana"></span></span></div>
+                        <div class="meter meter-mana"><div id="mana-fill"></div><div class="meter-sheen"></div></div>
+                    </div>
+                    <div class="vital-stats-row">
+                        <div class="vital-stat"><small>Floor</small><span id="floor-level">0</span></div>
+                        <div class="vital-stat"><small>ATK</small><span id="player-atk"></span></div>
+                        <div class="vital-stat"><small>DEF</small><span id="player-def"></span></div>
+                    </div>
+                </div>
+
+                <div class="panel" id="effects-panel">
+                    <h2><span class="panel-icon">&#9760;</span> Status</h2>
+                    <div id="status-bar"></div>
+                    <div id="subclass-meter"></div>
+                </div>
+
+                <div class="panel" id="intent-panel">
+                    <h2><span class="panel-icon">&#9876;</span> Enemy Intent</h2>
+                    <div id="enemy-intent-list" class="intent-list"></div>
+                </div>
+
+                <div class="panel" id="gear-panel">
+                    <h2><span class="panel-icon">&#9874;</span> Gear</h2>
+                    <div id="equipment"></div>
+                </div>
+
+                <section id="level-panel" class="panel" style="display:none;">
+                    <h2><span class="panel-icon">&#9733;</span> Level Up</h2>
+                    <div id="level-options"></div>
+                </section>
+
+                <div class="panel" id="controls-panel">
+                    <div id="controls-grid">
+                        <span class="ctrl-key">WASD / Arrows</span><span class="ctrl-action">Move</span>
+                        <span class="ctrl-key">Space</span><span class="ctrl-action">Attack / Open chest</span>
+                        <span class="ctrl-key">E</span><span class="ctrl-action">Ability</span>
+                        <span class="ctrl-key">1&ndash;6</span><span class="ctrl-action">Items</span>
+                        <span class="ctrl-key">C</span><span class="ctrl-action">Character sheet</span>
+                        <span class="ctrl-key">H</span><span class="ctrl-action">Help</span>
+                        <span class="ctrl-key">B</span><span class="ctrl-action">Bestiary</span>
+                        <span class="ctrl-key">O</span><span class="ctrl-action">Settings</span>
+                        <span class="ctrl-key">G</span><span class="ctrl-action">Donate</span>
+                        <span class="ctrl-key">R</span><span class="ctrl-action">Restart</span>
+                    </div>
+                    <p id="ability-text"></p>
+                </div>
+            </aside>
+
+            <!-- ════════════════ CENTER COLUMN — Viewport + log ════════════════ -->
+            <main id="col-center">
+                <div id="dungeon-progress-panel">
+                    <div class="dungeon-progress-head">
+                        <span id="dungeon-name">The Dungeon of Ash</span>
+                        <span id="floor-progress">Tavern Hub</span>
+                    </div>
+                    <div class="run-floor-track" aria-label="Dungeon depth progress"><div id="floor-progress-fill"></div></div>
+                    <div class="run-floor-pct-row">
+                        <span id="floor-progress-ascii" class="run-floor-ascii" aria-hidden="true"></span>
+                        <span id="floor-progress-pct">0%</span>
+                    </div>
+                    <div id="boss-anticipation" class="boss-anticipation"></div>
+                </div>
+                <div id="canvas-stage">
+                    <div id="canvas-wrap">
+                        <canvas id="game-canvas" width="1000" height="720"></canvas>
+                        <div id="event-cards"></div>
+                        <div id="map-tooltip"></div>
+                    </div>
+                </div>
+                <div id="log-area">
+                    <div id="log-header">
+                        <span class="panel-icon">&#9776;</span> <span>Chronicle</span>
+                        <span id="log-unread-badge" style="display:none"></span>
+                    </div>
+                    <div id="message-log"></div>
+                </div>
+            </main>
+
+            <!-- ════════════════ RIGHT COLUMN — Tabbed panels ════════════════ -->
+            <aside id="col-right">
+                <div id="right-tabs">
+                    <button class="right-tab-btn right-tab-active" id="right-tab-btn-inventory" onclick="showRightTab('inventory')">&#10070; Items</button>
+                    <button class="right-tab-btn" id="right-tab-btn-relics" onclick="showRightTab('relics')">&#10022; Relics</button>
+                    <button class="right-tab-btn" id="right-tab-btn-stash" onclick="showRightTab('stash')">&#9646; Stash</button>
+                    <button class="right-tab-btn" id="right-tab-btn-quests" onclick="showRightTab('quests')">&#9873; Quest</button>
+                    <button class="right-tab-btn" id="right-tab-btn-map" onclick="showRightTab('map'); renderWorldMapPanel()">&#9672; Map</button>
+                </div>
+
+                <div id="right-tab-inventory" class="right-tab-pane">
+                    <button id="tavern-return-btn" onclick="requestReturnToTavern()">&#9650; Return to Tavern</button>
+                    <div id="inventory" class="item-grid"></div>
+                    <div id="snapshot-label" class="relic-section-label">Run Snapshot</div>
+                    <div id="run-snapshot"></div>
+                </div>
+
+                <div id="right-tab-relics" class="right-tab-pane" style="display:none;">
+                    <p class="side-hint">Relics are permanent run modifiers. Attune up to 5 at once &mdash; swap freely between equipped and pouch.</p>
+                    <div id="relics-equipped-label" class="relic-section-label">Attuned (<span id="relics-equipped-count">0</span>/5)</div>
+                    <div id="relics-equipped" class="item-grid"></div>
+                    <div id="relics-pouch-label" class="relic-section-label">Pouch</div>
+                    <div id="relics-pouch" class="item-grid"></div>
+                </div>
+
+                <div id="right-tab-stash" class="right-tab-pane" style="display:none;">
+                    <p class="side-hint">Items stashed in The Broken Flagon survive your death. Visit the chest to deposit or withdraw.</p>
+                    <div id="side-stash-summary" class="item-grid"></div>
+                </div>
+
+                <div id="right-tab-quests" class="right-tab-pane" style="display:none;">
+                    <p class="side-hint">Active bounty from the Notice Board. Complete it before you die to claim the reward.</p>
+                    <div id="side-quest-summary"></div>
+                </div>
+
+                <div id="right-tab-map" class="right-tab-pane" style="display:none;">
+                    <!-- World map overlay — shown when on the overland map (floor 0) -->
+                    <div id="world-map-panel" style="display:none;">
+                        <div class="world-map-header">
+                            <span class="world-map-title">&#9670; World Map</span>
+                            <span id="world-map-zone-name" class="world-map-zone"></span>
+                        </div>
+                        <div id="world-map-grid"></div>
+                        <div class="world-map-legend">
+                            <span class="wml-item"><span class="wml-dot" style="background:#6fbf73"></span>Forest</span>
+                            <span class="wml-item"><span class="wml-dot" style="background:#c8a85a"></span>Road</span>
+                            <span class="wml-item"><span class="wml-dot" style="background:#4fc3f7"></span>Town</span>
+                            <span class="wml-item"><span class="wml-dot" style="background:#c8922a"></span>Tavern</span>
+                            <span class="wml-item"><span class="wml-dot" style="background:#555"></span>Mountains</span>
+                        </div>
+                        <button class="world-map-home-btn" onclick="worldMapFastTravel()" id="world-map-home-btn" style="display:none;">
+                            &#8962; Return to Tavern
+                        </button>
+                    </div>
+                    <!-- Dungeon minimap — shown when in the dungeon (floor > 0) -->
+                    <div id="minimap-wrap">
+                        <div id="minimap-header">
+                            <span id="minimap-floor">Floor —</span>
+                            <span id="minimap-explored">—</span>
+                        </div>
+                        <div id="minimap"></div>
+                    </div>
+                    <section id="legend-panel" class="panel">
+                        <h2 class="legend-toggle" onclick="toggleLegend()"><span class="panel-title-group"><span class="panel-icon">&#9636;</span> Legend</span> <span id="legend-caret">&#9656;</span></h2>
+                        <div id="legend-list" class="legend-list" style="display:none;"></div>
+                    </section>
+                </div>
+            </aside>
+            </div>
+        </div>
+        
+        <div id="game-over" style="display:none;">
+            <!-- Full-bleed background layers -->
+            <canvas id="go-canvas" aria-hidden="true"></canvas>
+            <div id="go-scrim" aria-hidden="true"></div>
+
+            <!-- Centered content panel -->
+            <div id="go-panel">
+
+                <!-- ── Header: icon + title + record ── -->
+                <div id="go-header">
+                    <div id="go-skull" aria-hidden="true">&#9760;</div>
+                    <h2 id="game-over-title">RUN ENDED</h2>
+                    <p id="game-over-best" class="game-over-best"></p>
+                </div>
+
+                <!-- ── Cause of death banner ── -->
+                <div id="go-cause" class="go-cause" style="display:none;"></div>
+
+                <!-- ── Portrait + stat grid side by side ── -->
+                <div id="go-body">
+                    <div id="go-portrait-col">
+                        <img id="go-portrait-img" src="" alt="" class="go-portrait-img"
+                             onerror="this.parentElement.style.display='none'" />
+                        <div id="go-portrait-class" class="go-portrait-class"></div>
+                    </div>
+                    <div id="game-over-summary" class="game-over-summary"></div>
+                    <div id="game-over-secondary" class="game-over-secondary" style="display:none;"></div>
+                </div>
+
+                <!-- ── Achievements unlocked this run ── -->
+                <div id="game-over-achievements" class="game-over-achievements" style="display:none;"></div>
+
+                <!-- ── Epitaph + retention hook ── -->
+                <div class="go-text-block">
+                    <p id="game-over-epitaph" class="game-over-epitaph"></p>
+                    <p id="game-over-hook"    class="game-over-hook" style="display:none;"></p>
+                </div>
+
+                <!-- ── Seed ── -->
+                <p id="game-over-seed" class="game-over-seed" style="display:none;"></p>
+
+                <!-- ── Action buttons ── -->
+                <div class="go-btn-row">
+                    <button id="game-over-again-btn" class="go-primary-btn" onclick="location.reload()">Descend Again</button>
+                </div>
+
+            </div><!-- /go-panel -->
+        </div>
+
+        <div id="shop-panel" style="display:none;">
+            <div id="shop-inner">
+                <div id="shop-header">
+                    <h2><span class="panel-icon">⚖</span> Merchant's Stall</h2>
+                    <span id="shop-gold"></span>
+                    <button id="shop-close-btn" onclick="closeShop()">&#x2715; Close</button>
+                </div>
+                <div id="shop-tabs">
+                    <button class="shop-tab-btn shop-tab-active" id="shop-tab-btn-buy" onclick="showShopTab('buy')">&#x2630; Buy</button>
+                    <button class="shop-tab-btn" id="shop-tab-btn-sell" onclick="showShopTab('sell')">&#x21BA; Sell Gear</button>
+                </div>
+                <div id="shop-tab-buy">
+                    <div id="shop-list"></div>
+                </div>
+                <div id="shop-tab-sell" style="display:none;">
+                    <p class="shop-sell-hint">Sell unwanted gear from your pack or equipped slots. Cursed-but-unidentified items fetch only a cautious flat price.</p>
+                    <div id="shop-sell-list"></div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="charsheet-panel" style="display:none;">
+            <div id="charsheet-inner">
+                <div id="charsheet-header">
+                    <h2><span class="panel-icon">&#9876;</span> Character Sheet</h2>
+                    <button id="charsheet-close-btn" onclick="closeCharSheet()">&#x2715; Close</button>
+                </div>
+                <div id="charsheet-body"></div>
+                <p class="shop-hint">C or ESC to close</p>
+            </div>
+        </div>
+
+        <div id="help-panel" style="display:none;">
+            <div id="help-inner">
+                <div id="help-header">
+                    <h2><span class="panel-icon">&#10070;</span> How to Play</h2>
+                    <button id="help-close-btn" onclick="closeHelp()">&#x2715; Close</button>
+                </div>
+                <div id="help-tabs">
+                    <button class="help-tab-btn help-tab-active" id="help-tab-btn-controls" onclick="showHelpTab('controls')">Controls</button>
+                    <button class="help-tab-btn" id="help-tab-btn-classes" onclick="showHelpTab('classes')">Classes</button>
+                    <button class="help-tab-btn" id="help-tab-btn-gear" onclick="showHelpTab('gear')">Gear &amp; Rarity</button>
+                    <button class="help-tab-btn" id="help-tab-btn-relics" onclick="showHelpTab('relics')">Relics</button>
+                    <button class="help-tab-btn" id="help-tab-btn-tavern" onclick="showHelpTab('tavern')">Tavern</button>
+                </div>
+                <div id="help-body"></div>
+                <div class="help-footer">
+                    <p class="shop-hint">H or ESC to close</p>
+                    <button class="help-manual-btn" onclick="openManual()">&#128214; Full Manual</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Settings Panel ──────────────────────────────────────────── -->
+        <div id="settings-panel" style="display:none;">
+            <div id="settings-inner">
+                <div id="settings-header">
+                    <h2><span class="panel-icon">&#9881;</span> Settings</h2>
+                    <button id="settings-close-btn" onclick="closeSettings()">&#x2715; Close</button>
+                </div>
+
+                <!-- Tab navigation -->
+                <div id="settings-tabs" class="settings-tabs">
+                    <button class="settings-tab settings-tab-active" data-tab="audio" onclick="showSettingsTab('audio')">&#128266; Audio</button>
+                    <button class="settings-tab" data-tab="display" onclick="showSettingsTab('display')">&#9855; Display</button>
+                    <button class="settings-tab" data-tab="controls" onclick="showSettingsTab('controls')">&#9000; Controls</button>
+                    <button class="settings-tab" data-tab="data" onclick="showSettingsTab('data')">&#128190; Data</button>
+                </div>
+
+                <!-- Audio tab -->
+                <div class="settings-pane settings-pane-active" data-pane="audio">
+                <div class="settings-section">
+                    <h3 class="settings-section-title">Audio</h3>
+                    <div class="settings-row">
+                        <label for="settings-volume" class="settings-label">Master Volume</label>
+                        <div class="settings-control">
+                            <input type="range" id="settings-volume" min="0" max="100" step="1"
+                                   oninput="onVolumeChange(this.value)" class="settings-slider" />
+                            <span id="settings-volume-val" class="settings-value">70%</span>
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <label for="settings-mute" class="settings-label">Mute All Sound</label>
+                        <label class="settings-switch">
+                            <input type="checkbox" id="settings-mute" onchange="onMuteToggle(this.checked)" />
+                            <span class="settings-switch-track"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label for="settings-ambient" class="settings-label">Ambient Background</label>
+                        <label class="settings-switch">
+                            <input type="checkbox" id="settings-ambient" checked onchange="onAmbientToggle(this.checked)" />
+                            <span class="settings-switch-track"></span>
+                        </label>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Display / Accessibility tab -->
+                <div class="settings-pane" data-pane="display">
+                <div class="settings-section">
+                    <h3 class="settings-section-title">Display &amp; Accessibility</h3>
+                    <div class="settings-row">
+                        <label for="settings-shake" class="settings-label">
+                            Screen Shake
+                            <small class="settings-hint">Camera shake on heavy hits</small>
+                        </label>
+                        <label class="settings-switch">
+                            <input type="checkbox" id="settings-shake" onchange="onShakeToggle(this.checked)" />
+                            <span class="settings-switch-track"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label for="settings-reduce-motion" class="settings-label">
+                            Reduce Motion
+                            <small class="settings-hint">Suppresses screen flashes &amp; freeze-frames</small>
+                        </label>
+                        <label class="settings-switch">
+                            <input type="checkbox" id="settings-reduce-motion" onchange="onReduceMotionToggle(this.checked)" />
+                            <span class="settings-switch-track"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row">
+                        <label for="settings-particles" class="settings-label">
+                            Particle Density
+                            <small class="settings-hint">Lower for better performance</small>
+                        </label>
+                        <div class="settings-control">
+                            <input type="range" id="settings-particles" min="0" max="100" step="25"
+                                   oninput="onParticleDensityChange(this.value)" class="settings-slider" />
+                            <span id="settings-particles-val" class="settings-value">100%</span>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Controls / Key Bindings tab -->
+                <div class="settings-pane" data-pane="controls">
+                <div class="settings-section" id="keybindings-section">
+                    <h3 class="settings-section-title">Key Bindings <button class="kb-reset-btn" onclick="resetKeyBindings()">Reset to Defaults</button></h3>
+                    <div id="keybindings-grid" class="kb-grid">
+                        <!-- populated by renderKeyBindings() -->
+                    </div>
+                    <p class="settings-hint kb-hint">Click a binding, then press any key to remap it. Press Escape to cancel.</p>
+                </div>
+                </div>
+
+                <!-- Data / Quit tab -->
+                <div class="settings-pane" data-pane="data">
+                <div class="settings-section">
+                    <h3 class="settings-section-title">Data Management</h3>
+                    <div class="settings-row">
+                        <label class="settings-label">
+                            Reset All Progress
+                            <small class="settings-hint">Erases meta progress, stash, and achievements</small>
+                        </label>
+                        <button class="settings-data-btn settings-data-danger" onclick="confirmResetProgress()">Reset</button>
+                    </div>
+                    <div class="settings-row">
+                        <label class="settings-label">
+                            Clear Save Slots
+                            <small class="settings-hint">Deletes all named save slots</small>
+                        </label>
+                        <button class="settings-data-btn" onclick="confirmClearSaveSlots()">Clear</button>
+                    </div>
+                </div>
+                <div class="settings-section settings-section-quit">
+                    <button class="settings-quit-btn" onclick="quitGame()">
+                        <svg viewBox="0 0 32 32" fill="none" width="16" height="16"><rect x="5" y="4" width="14" height="24" rx="1.5" fill="currentColor" opacity=".25"/><rect x="5" y="4" width="14" height="24" rx="1.5" stroke="currentColor" stroke-width="1.8"/><circle cx="17" cy="16" r="1.8" fill="currentColor"/><path d="M21 16h6M24 13l3 3-3 3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Quit to Desktop
+                    </button>
+                </div>
+                </div>
+
+                <p class="shop-hint">O or ESC to close &middot; Settings save automatically</p>
+            </div>
+        </div>
+
+        <!-- ── Bestiary Panel ──────────────────────────────────────────── -->
+        <div id="bestiary-panel" style="display:none;">
+            <div id="bestiary-inner">
+                <div id="bestiary-header">
+                    <h2><span class="panel-icon">&#9763;</span> Bestiary <span id="bestiary-count" class="bestiary-count-badge"></span></h2>
+                    <button id="bestiary-close-btn" onclick="closeBestiary()">&#x2715; Close</button>
+                </div>
+                <p class="bestiary-subtitle">Every creature you encounter in the Dungeon of Ash is recorded here. Hunt them all.</p>
+                <div id="bestiary-grid"></div>
+                <p class="shop-hint">B or ESC to close</p>
+            </div>
+        </div>
+
+        <div id="notice-board-panel" style="display:none;">
+            <div id="notice-board-inner">
+                <div id="notice-board-header">
+                    <h2><span class="panel-icon">&#9873;</span> Quest Board</h2>
+                    <button id="notice-board-close-btn" onclick="closeNoticeBoard()">&#x2715; Close</button>
+                </div>
+                <p class="notice-board-subtitle">Three bounties posted by the guild. Accept one to earn gold &mdash; complete it before you die.</p>
+                <div id="bounty-list"></div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="brewmaster-panel" style="display:none;">
+            <div id="brewmaster-inner">
+                <div id="brewmaster-header">
+                    <h2><span class="panel-icon">&#9752;</span> Brewmaster</h2>
+                    <span id="brewmaster-gold"></span>
+                    <button id="brewmaster-close-btn" onclick="closeBrewmaster()">&#x2715; Close</button>
+                </div>
+                <p class="brewmaster-subtitle">Concoctions that fortify body and spirit &mdash; one at a time.</p>
+                <div id="brew-list"></div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="bard-panel" style="display:none;">
+            <div id="bard-inner">
+                <div id="bard-header">
+                    <h2><span class="panel-icon">&#9834;</span> Bard's Corner</h2>
+                    <span id="bard-gold"></span>
+                    <button id="bard-close-btn" onclick="closeBard()">&#x2715; Close</button>
+                </div>
+                <p class="bard-subtitle">"A good tune eases the descent. What shall I play?"</p>
+                <div id="bard-song-list"></div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <!-- ── Arena Panel ──────────────────────────────────────────── -->
+        <div id="arena-panel" style="display:none;">
+            <div id="arena-inner">
+                <div id="arena-header">
+                    <div id="arena-header-left">
+                        <div id="arena-season-row">
+                            <span id="arena-season-banner" class="arena-season-banner">Bronze Season</span>
+                        </div>
+                        <h2>&#9876; The Pit</h2>
+                        <div id="arena-fame-row">
+                            <span id="arena-title-val" class="arena-title">Unknown</span>
+                            <span class="arena-fame-label">Fame: <b id="arena-fame-val">0</b></span>
+                            <span id="arena-fame-next" class="arena-fame-next"></span>
+                        </div>
+                    </div>
+                    <div id="arena-header-right">
+                        <span class="arena-gold-label">Gold: <b id="arena-gold-val">0g</b></span>
+                        <button onclick="closeArena()">&#x2715; Close</button>
+                    </div>
+                </div>
+
+                <div id="arena-body">
+                    <div class="arena-section">
+                        <h3 class="arena-section-title">&#9756; Your Captures <span class="arena-section-sub">(max 5)</span></h3>
+                        <div id="arena-captures"></div>
+                    </div>
+                    <div class="arena-section">
+                        <h3 class="arena-section-title">&#9812; Champion Roster</h3>
+                        <div id="arena-champions"></div>
+                    </div>
+                    <div class="arena-section" id="arena-gauntlet-section">
+                        <h3 class="arena-section-title">&#9876; The Gauntlet <span class="arena-section-sub">(endurance · banked rewards)</span></h3>
+                        <div id="arena-gauntlets"></div>
+                    </div>
+                </div>
+
+                <div id="arena-bet-section" style="display:none;">
+                    <div class="arena-selected-row">
+                        <span class="arena-selected-label">Selected:</span>
+                        <span id="arena-selected-name" class="arena-selected-name"></span>
+                    </div>
+                    <div id="arena-selected-reward" class="arena-selected-reward"></div>
+                    <div id="arena-crowd-flavor" class="arena-crowd-flavor"></div>
+                    <div class="arena-bet-controls">
+                        <label class="arena-bet-label">
+                            Bet:
+                            <input type="number" id="arena-bet-input" class="arena-bet-input" min="0" max="500" value="0" />
+                            <span class="arena-bet-unit">gold (max 500)</span>
+                        </label>
+                        <label class="arena-ironman-label">
+                            <input type="checkbox" id="arena-ironman-check" />
+                            Ironman Stakes — a loss ends your run
+                        </label>
+                        <button class="arena-confirm-btn" onclick="confirmArenaBout()">Enter the Pit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ── Treasury Panel (Phase 5) ──────────────────────────────────────── -->
+        <div id="treasury-panel" style="display:none;">
+            <div id="treasury-inner">
+                <div id="treasury-header">
+                    <div id="treasury-header-left">
+                        <h2><span class="panel-icon">&#9672;</span> Treasury of the Broken Flagon</h2>
+                        <p class="treasury-subtitle">Spend Flagon Coins on permanent upgrades. Coins are never lost on death.</p>
+                        <div class="treasury-meta-row">
+                            <span id="treasury-level-badge" class="treasury-level-badge">Treasury Level 1</span>
+                            <span id="treasury-spent-count" class="treasury-spent-count">0 nodes unlocked</span>
+                        </div>
+                    </div>
+                    <div id="treasury-header-right">
+                        <div class="treasury-coins-display">
+                            <span class="treasury-coins-icon">&#9672;</span>
+                            <span id="treasury-coins-val" class="treasury-coins-val">0</span>
+                            <span class="treasury-coins-label">Flagon Coins</span>
+                        </div>
+                        <button onclick="closeTreasury()">&#x2715; Close</button>
+                    </div>
+                </div>
+                <div id="treasury-body">
+                    <div id="treasury-nodes"></div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave the Treasury</p>
+            </div>
+        </div>
+
+        <div id="stash-panel" style="display:none;">
+            <div id="stash-inner">
+                <div id="stash-header">
+                    <h2><span class="panel-icon">&#9646;</span> Shared Stash <span id="stash-slots" class="stash-slots-count"></span></h2>
+                    <button id="stash-close-btn" onclick="closeStash()">&#x2715; Close</button>
+                </div>
+                <p class="stash-subtitle">Items stored here survive your death. Max 3 slots.</p>
+                <div id="stash-columns">
+                    <div class="stash-col">
+                        <h3 class="stash-col-title">In Chest</h3>
+                        <div id="stash-items"></div>
+                    </div>
+                    <div class="stash-divider"></div>
+                    <div class="stash-col">
+                        <h3 class="stash-col-title">Your Equipment</h3>
+                        <div id="stash-inv"></div>
+                    </div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="cellar-panel" style="display:none;">
+            <div id="cellar-inner">
+                <div id="cellar-header">
+                    <h2><span class="panel-icon">&#9670;</span> The Cellar</h2>
+                    <button id="cellar-close-btn" onclick="closeCellar()">&#x2715; Close</button>
+                </div>
+                <div id="cellar-body"></div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="magic-dealer-panel" style="display:none;">
+            <div id="magic-dealer-inner">
+                <div id="magic-dealer-header">
+                    <h2><span class="panel-icon">&#10022;</span> Magical Dealer</h2>
+                    <span id="magic-dealer-gold"></span>
+                    <button id="magic-dealer-close-btn" onclick="closeMagicDealer()">&#x2715; Close</button>
+                </div>
+                <p class="magic-dealer-subtitle">"I deal in things the common merchants dare not touch."</p>
+                <div id="magic-dealer-tabs">
+                    <button class="magic-tab-btn magic-tab-active" id="magic-tab-btn-artifacts" onclick="showMagicTab('artifacts')">&#x2726; Buy Artifacts</button>
+                    <button class="magic-tab-btn" id="magic-tab-btn-altar" onclick="showMagicTab('altar')">&#x2728; Enchant &amp; Cleansing Altar</button>
+                </div>
+                <div id="magic-tab-artifacts">
+                    <div id="magic-stock-list"></div>
+                </div>
+                <div id="magic-tab-altar" style="display:none;">
+                    <p class="magic-altar-hint">Select an item from your inventory to enchant or purify. Items at +5 or above risk shattering.</p>
+                    <div id="magic-altar-list"></div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="gambling-panel" style="display:none;">
+            <div id="gambling-inner">
+                <div id="gambling-header">
+                    <h2 id="casino-title"><span class="panel-icon">&#9860;</span> The Broken Flagon Casino</h2>
+                    <span id="gambling-gold"></span>
+                    <button id="gambling-close-btn" onclick="closeGambling()">&#x2715; Close</button>
+                </div>
+
+                <!-- ── Den lobby ────────────────────────────────────── -->
+                <div id="casino-lobby">
+                    <div id="casino-jackpot-banner">
+                        <div id="casino-jackpot-inner">
+                            <span class="jackpot-label">&#9733; DAILY JACKPOT</span>
+                            <span id="casino-jackpot-amount" class="jackpot-amount">50g</span>
+                            <button id="casino-jackpot-btn" onclick="claimDailyJackpot()">Claim Free Spin</button>
+                            <span id="casino-jackpot-claimed" class="jackpot-claimed" style="display:none">&#10003; Claimed today — come back tomorrow!</span>
+                        </div>
+                        <p class="jackpot-hint">Grows by 25g each day unclaimed &middot; resets on claim &middot; max 500g</p>
+                    </div>
+                    <div id="casino-game-grid">
+                        <div class="casino-game-card" onclick="openCasinoGame('dice')">
+                            <div class="casino-game-icon">&#9860;</div>
+                            <div class="casino-game-name">Flagon Dice</div>
+                            <div class="casino-game-desc">Bet Low, High, or Triple on three dice</div>
+                            <div class="casino-game-odds">2× &nbsp;·&nbsp; 2× &nbsp;·&nbsp; 5×</div>
+                        </div>
+                        <div class="casino-game-card" onclick="openCasinoGame('wheel')">
+                            <div class="casino-game-icon">&#9880;</div>
+                            <div class="casino-game-name">Fortune Wheel</div>
+                            <div class="casino-game-desc">Spin the wheel for a random multiplier</div>
+                            <div class="casino-game-odds">½× to 10×</div>
+                        </div>
+                        <div class="casino-game-card" onclick="openCasinoGame('cards')">
+                            <div class="casino-game-icon">&#127137;</div>
+                            <div class="casino-game-name">Three-Card Draw</div>
+                            <div class="casino-game-desc">Pick one card — one wins, one pushes, one loses</div>
+                            <div class="casino-game-odds">3× &nbsp;·&nbsp; push &nbsp;·&nbsp; lose</div>
+                        </div>
+                        <div class="casino-game-card" onclick="openCasinoGame('slots')">
+                            <div class="casino-game-icon">&#9813;</div>
+                            <div class="casino-game-name">Dragon Slots</div>
+                            <div class="casino-game-desc">Match dungeon symbols on three reels</div>
+                            <div class="casino-game-odds">2× to 20×</div>
+                        </div>
+                        <div class="casino-game-card" onclick="openCasinoGame('coinflip')">
+                            <div class="casino-game-icon">&#9711;</div>
+                            <div class="casino-game-name">Coin &amp; Crown</div>
+                            <div class="casino-game-desc">Call it — Coin or Crown. Fastest bet in the Flagon</div>
+                            <div class="casino-game-odds">1.9×</div>
+                        </div>
+                    </div>
+                    <p class="shop-hint">ESC or Close to leave the casino</p>
+                </div>
+
+                <!-- ── Flagon Dice game ─────────────────────────────── -->
+                <div id="casino-dice-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <div id="gambling-rules">
+                        <span><span class="rule-label rule-low">LOW</span> 3&ndash;10 &rarr; 2&times;</span>
+                        <span><span class="rule-label rule-high">HIGH</span> 12&ndash;18 &rarr; 2&times;</span>
+                        <span><span class="rule-label rule-triple">TRIPLE</span> all same &rarr; 5&times;</span>
+                    </div>
+                    <div id="dice-area">
+                        <div class="die" id="die-1">&mdash;</div>
+                        <div class="die" id="die-2">&mdash;</div>
+                        <div class="die" id="die-3">&mdash;</div>
+                    </div>
+                    <div id="gambling-result" class="gambling-result"></div>
+                    <div id="gambling-wager-row">
+                        <label for="wager-input">Wager</label>
+                        <input type="number" id="wager-input" min="5" max="500" value="10">
+                        <span class="wager-unit">gold</span>
+                    </div>
+                    <div id="gambling-buttons">
+                        <button class="bet-btn bet-low" onclick="playDice('low')">BET LOW<br><small>3&ndash;10 &middot; 2&times;</small></button>
+                        <button class="bet-btn bet-triple" onclick="playDice('triple')">BET TRIPLE<br><small>all same &middot; 5&times;</small></button>
+                        <button class="bet-btn bet-high" onclick="playDice('high')">BET HIGH<br><small>12&ndash;18 &middot; 2&times;</small></button>
+                    </div>
+                </div>
+
+                <!-- ── Fortune Wheel game ───────────────────────────── -->
+                <div id="casino-wheel-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <div id="wheel-container">
+                        <canvas id="wheel-canvas" width="300" height="300"></canvas>
+                        <div id="wheel-pointer">&#9660;</div>
+                    </div>
+                    <div id="wheel-result" class="gambling-result"></div>
+                    <div id="wheel-wager-row">
+                        <label for="wheel-wager-input">Wager</label>
+                        <input type="number" id="wheel-wager-input" min="5" max="500" value="10">
+                        <span class="wager-unit">gold</span>
+                    </div>
+                    <button id="wheel-spin-btn" class="wheel-spin-btn" onclick="playWheel()">SPIN THE WHEEL</button>
+                </div>
+
+                <!-- ── Three-Card Draw ──────────────────────────────── -->
+                <div id="casino-cards-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <p class="casino-game-subtitle">Three cards face down. One wins <strong>3×</strong>, one pushes, one loses. Pick wisely.</p>
+                    <div id="cards-area">
+                        <div class="draw-card" id="draw-card-0" onclick="playCards(0)">&#127136;</div>
+                        <div class="draw-card" id="draw-card-1" onclick="playCards(1)">&#127136;</div>
+                        <div class="draw-card" id="draw-card-2" onclick="playCards(2)">&#127136;</div>
+                    </div>
+                    <div id="cards-result" class="gambling-result"></div>
+                    <div id="cards-wager-row">
+                        <label for="cards-wager-input">Wager</label>
+                        <input type="number" id="cards-wager-input" min="5" max="500" value="10">
+                        <span class="wager-unit">gold</span>
+                    </div>
+                    <button id="cards-reset-btn" class="wheel-spin-btn" onclick="resetCards()" style="display:none;">Draw Again</button>
+                </div>
+
+                <!-- ── Dragon Slots ─────────────────────────────────── -->
+                <div id="casino-slots-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <p class="casino-game-subtitle">Match symbols across three reels. Dragon pays <strong>20×</strong>.</p>
+                    <div id="slots-area">
+                        <div class="slot-reel" id="slot-reel-0">&#9866;</div>
+                        <div class="slot-reel-divider">|</div>
+                        <div class="slot-reel" id="slot-reel-1">&#9866;</div>
+                        <div class="slot-reel-divider">|</div>
+                        <div class="slot-reel" id="slot-reel-2">&#9866;</div>
+                    </div>
+                    <div id="slots-paytable">
+                        <span>&#128009;&#128009;&#128009; = 20×</span>
+                        <span>&#9876;&#9876;&#9876; = 8×</span>
+                        <span>&#9733;&#9733;&#9733; = 5×</span>
+                        <span>&#9830;&#9830;&#9830; = 3×</span>
+                        <span>&#9830;&#9830; any = 2×</span>
+                    </div>
+                    <div id="slots-result" class="gambling-result"></div>
+                    <div id="slots-wager-row">
+                        <label for="slots-wager-input">Wager</label>
+                        <input type="number" id="slots-wager-input" min="5" max="500" value="10">
+                        <span class="wager-unit">gold</span>
+                    </div>
+                    <button id="slots-spin-btn" class="wheel-spin-btn" onclick="playSlots()">PULL THE LEVER</button>
+                </div>
+
+                <!-- ── Coin & Crown ─────────────────────────────────── -->
+                <div id="casino-coinflip-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <p class="casino-game-subtitle">Call it. 1.9× on a win — the house takes its cut.</p>
+                    <div id="coin-area">
+                        <div id="coin-display">&#9711;</div>
+                        <div id="coin-result" class="gambling-result"></div>
+                    </div>
+                    <div id="coin-wager-row">
+                        <label for="coin-wager-input">Wager</label>
+                        <input type="number" id="coin-wager-input" min="5" max="500" value="10">
+                        <span class="wager-unit">gold</span>
+                    </div>
+                    <div id="coin-buttons">
+                        <button class="bet-btn bet-low" onclick="playCoinFlip('coin')">&#9711; COIN</button>
+                        <button class="bet-btn bet-high" onclick="playCoinFlip('crown')">&#9812; CROWN</button>
+                    </div>
+                </div>
+
+                <p class="shop-hint" id="casino-hint-bar">ESC or Close to leave the casino</p>
+            </div>
+        </div>
+
+        <div id="levelup-panel" style="display:none;">
+            <div id="levelup-inner">
+                <div id="levelup-banner">
+                    <div class="levelup-rays" aria-hidden="true"></div>
+                    <div class="levelup-rays levelup-rays-inner" aria-hidden="true"></div>
+                    <div class="levelup-flash" aria-hidden="true"></div>
+                    <div class="levelup-sparks" id="levelup-sparks" aria-hidden="true"></div>
+                    <h2 class="levelup-title">Level Up!</h2>
+                    <p class="levelup-level">Level <span id="levelup-level-num">2</span></p>
+                </div>
+                <p class="levelup-prompt">Choose one training bonus</p>
+                <div id="levelup-options"></div>
+            </div>
+        </div>
+
+        <div id="spellbook-panel" style="display:none;">
+            <div id="spellbook-inner">
+                <div id="spellbook-header">
+                    <h2><span class="panel-icon">&#128218;</span> Spellbook</h2>
+                    <span id="spellbook-mana"></span>
+                    <button onclick="closeSpellbook()">&#x2715; Close</button>
+                </div>
+                <p class="spellbook-hint">Choose a spell to cast. Greyed spells need more mana or a higher level.</p>
+                <div id="spellbook-list"></div>
+            </div>
+        </div>
+
+        <div id="inn-panel" style="display:none;">
+            <div id="inn-inner" class="hub-panel-inner">
+                <div id="inn-header" class="hub-panel-header">
+                    <h2><span class="panel-icon">&#9962;</span> Innkeeper</h2>
+                    <span id="inn-gold"></span>
+                    <button onclick="closeInnkeeper()">&#x2715; Close</button>
+                </div>
+                <p class="hub-subtitle" id="inn-greeting">"Rest up before the ash claims you."</p>
+                <button id="inn-rest-btn" class="hub-action-btn" onclick="buyInnRest()">Rest &amp; Recover (25g)</button>
+                <button id="inn-hearthstone-btn" class="hub-action-btn" style="display:none;" onclick="buyHearthstoneCoin()">Hearthstone Coin (40g)</button>
+                <div class="hub-divider"></div>
+                <p class="hub-subtitle">"Got coin to spare? The place could use it."</p>
+                <div id="inn-upgrades-list"></div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="blacksmith-panel" style="display:none;">
+            <div id="blacksmith-inner" class="hub-panel-inner">
+                <div id="blacksmith-header" class="hub-panel-header">
+                    <h2><span class="panel-icon">&#9874;</span> Blacksmith</h2>
+                    <span id="blacksmith-gold"></span>
+                    <button onclick="closeBlacksmith()">&#x2715; Close</button>
+                </div>
+                <p class="hub-subtitle">"Steel sings when the coin is right."</p>
+                <p id="blacksmith-upgrade-info" class="hub-info"></p>
+                <button id="blacksmith-upgrade-btn" class="hub-action-btn" onclick="buyBlacksmithUpgrade()">Upgrade Weapon +1</button>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="trainer-panel" style="display:none;">
+            <div id="trainer-inner" class="hub-panel-inner">
+                <div id="trainer-header" class="hub-panel-header">
+                    <h2><span class="panel-icon">&#9876;</span> Trainer</h2>
+                    <span id="trainer-gold"></span>
+                    <button onclick="closeTrainer()">&#x2715; Close</button>
+                </div>
+                <p class="hub-subtitle">"One lesson may save your life below."</p>
+                <button id="trainer-hp-btn" class="hub-action-btn" onclick="buyTrainerHp()">Vitality Training (+10 Max HP) — 100g</button>
+                <button id="trainer-atk-btn" class="hub-action-btn" onclick="buyTrainerAtk()">Power Training (+1 ATK) — 150g</button>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="bank-panel" style="display:none;">
+            <div id="bank-inner" class="hub-panel-inner">
+                <div id="bank-header" class="hub-panel-header">
+                    <h2><span class="panel-icon">&#9830;</span> Bank</h2>
+                    <button onclick="closeBank()">&#x2715; Close</button>
+                </div>
+                <p class="hub-subtitle">Gold stored here survives your death.</p>
+                <div class="bank-balances">
+                    <div><small>Wallet</small><span id="bank-wallet">0g</span></div>
+                    <div><small>Vault</small><span id="bank-vault">0g</span></div>
+                </div>
+                <div class="bank-actions">
+                    <button class="hub-action-btn" onclick="bankDepositHalf()">Deposit Half</button>
+                    <button class="hub-action-btn" onclick="bankDepositAll()">Deposit All</button>
+                    <button class="hub-action-btn" onclick="bankWithdraw(50)">Withdraw 50g</button>
+                    <button class="hub-action-btn" onclick="bankWithdraw('all')">Withdraw All</button>
+                </div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="tavern-confirm-panel" style="display:none;">
+            <div id="tavern-confirm-inner">
+                <p id="tavern-confirm-message">Return to The Broken Flagon Tavern?</p>
+                <div id="tavern-confirm-buttons">
+                    <button id="tavern-confirm-yes-btn" onclick="confirmReturnToTavern()">Return</button>
+                    <button id="tavern-confirm-no-btn" onclick="cancelTavernConfirm()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="ring-choice-panel" style="display:none;">
+            <div id="ring-choice-inner">
+                <p id="ring-choice-message">Both ring slots are full. Replace which ring?</p>
+                <div id="ring-choice-buttons">
+                    <button id="ring-choice-slot1-btn" onclick="chooseRingSlot('ring1')">Ring 1</button>
+                    <button id="ring-choice-slot2-btn" onclick="chooseRingSlot('ring2')">Ring 2</button>
+                    <button id="ring-choice-cancel-btn" onclick="closeRingChoicePrompt()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="relic-choice-panel" style="display:none;">
+            <div id="relic-choice-inner">
+                <p id="relic-choice-message">All 5 relic slots are full. Bench which relic?</p>
+                <div id="relic-choice-list"></div>
+                <button id="relic-choice-cancel-btn" onclick="closeRelicChoicePrompt()">Cancel</button>
+            </div>
+        </div>
+        <!-- ── Mobile Touch Controls ─────────────────────────────────────────── -->
+    <!-- Hidden on desktop via CSS; shown only on touch/small screens.        -->
+    <!-- Each button dispatches a synthetic KeyboardEvent so the existing     -->
+    <!-- input handler in main.js processes it identically to a keypress.     -->
+    <div id="touch-controls" aria-label="Touch controls">
+        <!-- Swipe zone — transparent overlay on the game canvas for gesture detection -->
+        <div id="tc-swipe-zone" aria-hidden="true"></div>
+        <!-- D-pad -->
+        <div id="tc-dpad">
+            <button class="tc-btn tc-up"    id="tc-up"    aria-label="Move Up"    ontouchstart="tcPress('w')"    ontouchend="tcRelease('w')">&#9650;</button>
+            <button class="tc-btn tc-left"  id="tc-left"  aria-label="Move Left"  ontouchstart="tcPress('a')"    ontouchend="tcRelease('a')">&#9664;</button>
+            <button class="tc-btn tc-center" id="tc-center" aria-label="Interact" ontouchstart="tcPress(' ')"    ontouchend="tcRelease(' ')">&#9733;</button>
+            <button class="tc-btn tc-right" id="tc-right" aria-label="Move Right" ontouchstart="tcPress('d')"    ontouchend="tcRelease('d')">&#9654;</button>
+            <button class="tc-btn tc-down"  id="tc-down"  aria-label="Move Down"  ontouchstart="tcPress('s')"    ontouchend="tcRelease('s')">&#9660;</button>
+        </div>
+        <!-- Action buttons — stacked vertically for thumb reach -->
+        <div id="tc-actions">
+            <button class="tc-btn tc-action tc-ability"  aria-label="Ability"  ontouchstart="tcPress('e')" ontouchend="tcRelease('e')">&#9889; Ability</button>
+            <button class="tc-btn tc-action tc-potion"   aria-label="Potion"   ontouchstart="tcPress('1')" ontouchend="tcRelease('1')">&#10084; Potion</button>
+            <button class="tc-btn tc-action tc-descend"  aria-label="Descend"  ontouchstart="tcPress('Enter')" ontouchend="tcRelease('Enter')">&#8659; Stairs</button>
+            <button class="tc-btn tc-action tc-char"     aria-label="Character" ontouchstart="tcPress('c')" ontouchend="tcRelease('c')">&#9776; Menu</button>
+        </div>
+    </div>
+
+</div>
+    <script src="js/data.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/entities.js"></script>
+    <script src="js/dungeon.js"></script>
+    <script src="js/combat.js"></script>
+    <script src="js/items.js"></script>
+    <script src="js/tavern.js"></script>
+    <script src="js/arena.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/save.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/treasury.js"></script>
+    <script src="js/leaderboard.js"></script>
+
+    <!-- ───────────────────────────────────────────────────────────────────
+         Bot Controller (dev tool) — loads ONLY when explicitly requested.
+         Players never see it. Activate by either:
+           1. Adding ?bot to the URL:  index.html?bot
+           2. Running in console:       localStorage.setItem('flagonBot','1')
+         Deactivate: remove ?bot, or localStorage.removeItem('flagonBot')
+         To fully strip from a release build, delete this whole block AND
+         the js/bot-controller.js file.
+    ──────────────────────────────────────────────────────────────────── -->
+    <script>
+    (function () {
+        var params = new URLSearchParams(window.location.search);
+        var wantBot = params.has('bot') || localStorage.getItem('flagonBot') === '1';
+        if (wantBot) {
+            // Signal to the bot script that it's been deliberately enabled.
+            // The bot IIFE checks for this flag and exits silently if absent,
+            // making an accidental ship of bot-controller.js harmless.
+            window.__DEV_BOT__ = true;
+            var s = document.createElement('script');
+            s.src = 'js/bot-controller.js';
+            s.onerror = function () { console.warn('Bot controller not found (js/bot-controller.js) — skipping.'); };
+            document.body.appendChild(s);
+        }
+    })();
+    </script>
+</body>
+</html>

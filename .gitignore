@@ -1,0 +1,16 @@
+# Dependencies (regenerable via npm install)
+node_modules/
+
+# Build output / packaged installers
+dist/
+
+# Cloudflare Wrangler local state
+.wrangler/
+
+# Local Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
