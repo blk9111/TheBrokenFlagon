@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const scripts = ['data','audio','entities','dungeon','combat','items','tavern','arena','render','ui','save','treasury'];
+const scripts = ['data','audio','entities','dungeon','combat','items','tavern','arena','render','ui','save','treasury','loteria'];
 const jsDir = fs.existsSync('js') ? 'js' : '.';
 let game = '';
 for (const s of scripts) game += fs.readFileSync(path.join(jsDir, s + '.js'), 'utf8') + '\n;\n';

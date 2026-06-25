@@ -97,20 +97,29 @@ const LOTERIA_PACES = [
     { id: 'fast',    label: 'Fast',    secPerCall: 1.6, payoutMult: 1.4 },
 ];
 
-// Winning patterns. Each maps a tabla (4×4, indices 0–15) to the set of cells
-// required. A round announces ONE at random. `cells` is computed from the grid.
+// Winning patterns. A round announces ONE at random. Each pattern carries a
+// `winSets`: an array of winning cell-sets (each a list of 4×4 indices 0–15).
+// A tabla satisfies the pattern when ANY ONE of its winSets is fully marked.
+// This lets "Línea" win on any single row, column, or diagonal, while the
+// shaped patterns (corners/center/full) each have exactly one winSet.
 const LOTERIA_PATTERNS = (() => {
     const N = LOTERIA_GRID;
     const idx = (r, c) => r * N + c;
     const rows = [], cols = [];
-    for (let r = 0; r < N; r++) rows.push({ id: `row${r}`, label: `Row ${r + 1}`, cells: Array.from({length:N}, (_,c)=>idx(r,c)) });
-    for (let c = 0; c < N; c++) cols.push({ id: `col${c}`, label: `Column ${c + 1}`, cells: Array.from({length:N}, (_,r)=>idx(r,c)) });
-    const diagA = { id: 'diagA', label: 'Diagonal ↘', cells: Array.from({length:N}, (_,i)=>idx(i,i)) };
-    const diagB = { id: 'diagB', label: 'Diagonal ↙', cells: Array.from({length:N}, (_,i)=>idx(i,N-1-i)) };
-    const corners = { id: 'corners', label: 'Four Corners', cells: [idx(0,0), idx(0,N-1), idx(N-1,0), idx(N-1,N-1)] };
-    const center  = { id: 'center',  label: 'Center Four', cells: [idx(1,1), idx(1,2), idx(2,1), idx(2,2)] };
-    const full    = { id: 'full',    label: 'Tabla Llena (full board)', cells: Array.from({length:N*N}, (_,i)=>i) };
-    return [...rows, ...cols, diagA, diagB, corners, center, full];
+    for (let r = 0; r < N; r++) rows.push(Array.from({length:N}, (_,c)=>idx(r,c)));
+    for (let c = 0; c < N; c++) cols.push(Array.from({length:N}, (_,r)=>idx(r,c)));
+    const diagA = Array.from({length:N}, (_,i)=>idx(i,i));
+    const diagB = Array.from({length:N}, (_,i)=>idx(i,N-1-i));
+    return [
+        // Línea — any full row, column, or diagonal.
+        { id: 'linea',   label: 'Línea (any line)',        winSets: [...rows, ...cols, diagA, diagB] },
+        // Four Corners.
+        { id: 'corners', label: 'Four Corners',            winSets: [[idx(0,0), idx(0,N-1), idx(N-1,0), idx(N-1,N-1)]] },
+        // Center Four.
+        { id: 'center',  label: 'Center Four',             winSets: [[idx(1,1), idx(1,2), idx(2,1), idx(2,2)]] },
+        // Tabla Llena — the whole board.
+        { id: 'full',    label: 'Tabla Llena (full board)', winSets: [Array.from({length:N*N}, (_,i)=>i)] },
+    ];
 })();
 
 // ── Seedable RNG (reuses the game's _mulberry32 if present) ──────────────────
@@ -212,7 +221,7 @@ function loteriaCheckWin(round) {
     if (round.status !== 'playing') return false;
     for (let t = 0; t < round.tablas.length; t++) {
         const tabla = round.tablas[t];
-        const complete = round.pattern.cells.every(ci => tabla.marked[ci]);
+        const complete = round.pattern.winSets.some(set => set.every(ci => tabla.marked[ci]));
         if (complete) {
             round.status = 'won';
             round.winningTabla = t;
@@ -223,17 +232,15 @@ function loteriaCheckWin(round) {
     return false;
 }
 
-// Difficulty multiplier by pattern — harder patterns pay more.
+// Difficulty multiplier by pattern — harder patterns pay more. Tuned together
+// with the pace multipliers (relaxed 0.9 … fast 1.4) so that a win NEVER costs
+// coins: even the easiest pattern (Línea) at the slowest pace returns more than
+// the stake. The full board (the hardest) pays the real bonus.
 function _loteriaPatternMult(patternId) {
-    // Tunables (playtest and adjust). Kept low so the minigame feeds the economy
-    // rather than printing coins: most wins are modest, only a full board (the
-    // hardest) pays a real bonus. Compare against earn rates (boss=3, ach=5) and
-    // treasury costs (tier-4 upgrade=35). Combined with pace mult, an easy row
-    // mostly nets a small loss; a full board at fast pace tops out ~123 coins.
     if (patternId === 'full') return 2.2;        // tabla llena — hardest, best payout
-    if (patternId === 'center' || patternId === 'corners') return 0.8;
-    if (patternId.startsWith('diag')) return 1.0;
-    return 0.6;                                  // a row or column — easiest
+    if (patternId === 'corners') return 1.6;     // four corners
+    if (patternId === 'center')  return 1.6;     // center four
+    return 1.2;                                  // línea (any line) — easiest
 }
 
 // Payout in Flagon Coins for a won round.
@@ -241,20 +248,27 @@ function computeLoteriaPayout(round) {
     const base = round.stake;                    // what they paid in
     const patMult = _loteriaPatternMult(round.pattern.id);
     const paceMult = round.pace.payoutMult;
-    // Net winnings are generous but bounded; the stake is returned within this.
-    return Math.round(base * patMult * paceMult);
+    // Net winnings are generous but bounded. A win always returns at least the
+    // stake (the floor below makes that a hard guarantee, not just a tuning
+    // accident), so completing the announced pattern never leaves you poorer.
+    return Math.max(base, Math.round(base * patMult * paceMult));
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function getLoteriaCard(id) { return LOTERIA_DECK.find(c => c.id === id) || null; }
 
 // How many marks short of the announced pattern is the player's best tabla?
+// With multi-winSet patterns (Línea), this is the fewest marks remaining across
+// ANY winning line on ANY tabla — the closest the player is to calling Lotería.
 // (UI uses this to show "1 to go!" tension.) Returns { tablaIdx, remaining }.
 function loteriaBestProgress(round) {
-    let best = { tablaIdx: 0, remaining: round.pattern.cells.length };
+    const patternSize = round.pattern.winSets.reduce((m, s) => Math.min(m, s.length), Infinity);
+    let best = { tablaIdx: 0, remaining: patternSize };
     round.tablas.forEach((tabla, t) => {
-        const remaining = round.pattern.cells.filter(ci => !tabla.marked[ci]).length;
-        if (remaining < best.remaining) best = { tablaIdx: t, remaining };
+        round.pattern.winSets.forEach(set => {
+            const remaining = set.filter(ci => !tabla.marked[ci]).length;
+            if (remaining < best.remaining) best = { tablaIdx: t, remaining };
+        });
     });
     return best;
 }
