@@ -1,0 +1,252 @@
+{
+  "meta": {
+    "release": "2.1.1",
+    "baselineId": "2026-06-25-resealed",
+    "date": "2026-06-25",
+    "totalFiles": 34,
+    "totalBytes": 2142713,
+    "totalLines": 50753,
+    "botVersion": "2.10.0",
+    "gameVersion": "2.1.0"
+  },
+  "files": [
+    {
+      "file": "js/arena.js",
+      "role": "The Pit: champions, rivals, gauntlets",
+      "bytes": 53041,
+      "lines": 1195,
+      "sha256": "403ec1856a51398015d7709f9ba78ac06866cb8b098c3e97a9256b12133b034d"
+    },
+    {
+      "file": "js/bot-controller.js",
+      "role": "Autonomous play-bot & dashboard",
+      "bytes": 272263,
+      "lines": 4907,
+      "sha256": "4802c21d17ae2897c8a58978c9b51c315c91e851b25dc753d80097b170401da0"
+    },
+    {
+      "file": "js/combat.js",
+      "role": "Turn resolution & damage",
+      "bytes": 82919,
+      "lines": 1790,
+      "sha256": "e59e2b8327ed221b7405ec80cb2fdf0ba5078e339bcb7ca0a8031d0d7cbacbae"
+    },
+    {
+      "file": "js/data.js",
+      "role": "Classes, enemies, items, constants, version",
+      "bytes": 135372,
+      "lines": 2597,
+      "sha256": "f5fdae42b11d7cce4c32b74815f8a8b0d7236891773ef7d4c0008d6bedac4476"
+    },
+    {
+      "file": "js/dungeon.js",
+      "role": "Map generation & floor cache",
+      "bytes": 68558,
+      "lines": 1575,
+      "sha256": "5302dbabd42664c469d2b37a80e55d6c8ee6edf8e1f577335a9b0b4a180cafa6"
+    },
+    {
+      "file": "js/entities.js",
+      "role": "Player & enemy classes",
+      "bytes": 55604,
+      "lines": 1178,
+      "sha256": "a2d0e34bb9dbf1f78e492c2daf6e7b424ab24032c4284c5951517a09c3c83928"
+    },
+    {
+      "file": "index.html",
+      "role": "DOM shell (all screens)",
+      "bytes": 98291,
+      "lines": 1573,
+      "sha256": "eaefef379095b78b70646e4e0ed552f6f4f7f69c8c2b899b37e2c1030e1b511b"
+    },
+    {
+      "file": "js/leaderboard.js",
+      "role": "Global leaderboard client",
+      "bytes": 14630,
+      "lines": 341,
+      "sha256": "177fb88e98c60bb57b4a3a081c723e8622914a1fdc8006b004a454526146977a"
+    },
+    {
+      "file": "js/loteria.js",
+      "role": "Loteria engine (pure logic)",
+      "bytes": 18371,
+      "lines": 308,
+      "sha256": "df08dca38af0d2c846b57c1477981b00df65eb7d8f9a757b2bd1b824aceac10d"
+    },
+    {
+      "file": "js/main.js",
+      "role": "Game loop, input, run lifecycle",
+      "bytes": 126289,
+      "lines": 2361,
+      "sha256": "469b608ad54a097d6a8162d29f44823313887f1399bb4b6c7621aa3e45db87a3"
+    },
+    {
+      "file": "js/profile.js",
+      "role": "Player profile panel",
+      "bytes": 6767,
+      "lines": 126,
+      "sha256": "5a584d0ce8c931205897f90ebd42f70cb4ad739d742cc9106b52f50f4685fc1d"
+    },
+    {
+      "file": "js/render.js",
+      "role": "Canvas rendering & effects",
+      "bytes": 195267,
+      "lines": 4642,
+      "sha256": "4c7d1ef72707b654091b1ee02d5730792fb9ec923df7b9f40f57f35a7df24e4f"
+    },
+    {
+      "file": "js/save.js",
+      "role": "Persistence & migration",
+      "bytes": 40098,
+      "lines": 791,
+      "sha256": "2434ae6f9940495a13b56afa214ab26a3ee128c3031b4f97b4b64e1cea9afd26"
+    },
+    {
+      "file": "style.css",
+      "role": "All styling",
+      "bytes": 391955,
+      "lines": 14421,
+      "sha256": "0392d39074d52842795fed02becfff03581c3f1febab76bb7f60aabe3774231d"
+    },
+    {
+      "file": "js/tavern.js",
+      "role": "Tavern, Market, vendors",
+      "bytes": 132961,
+      "lines": 3195,
+      "sha256": "8e7fe6069f6b5e695ba93e09cde4e07eab1b1232059fd0e5adac41b506afd12f"
+    },
+    {
+      "file": "tests.html",
+      "role": "Test suite",
+      "bytes": 67848,
+      "lines": 1412,
+      "sha256": "cb94c9135ab99f67cc35b377966333e4be30f2f9398dcc1f0ff85ebe608fb13b"
+    },
+    {
+      "file": "js/treasury.js",
+      "role": "Flagon Coins & Treasury upgrades",
+      "bytes": 12309,
+      "lines": 286,
+      "sha256": "8a59150cb1e152fe1738021aebec0aeb1be59cfe301c0c5574225854fad5706e"
+    },
+    {
+      "file": "js/ui.js",
+      "role": "Panels, HUD, character sheet",
+      "bytes": 122161,
+      "lines": 2766,
+      "sha256": "ad57bd0c0ae3e2051ff4f9012c3387cd128554b6c5bd7f6b3f5dfde3d412e2f4"
+    },
+    {
+      "file": "js/audio.js",
+      "role": "Sound effects & music",
+      "bytes": 13658,
+      "lines": 413,
+      "sha256": "5e3d23c175123211a4df0a3b11212cd4ac94fb2e901dd46564c5ec9c4810a6fd"
+    },
+    {
+      "file": "js/items.js",
+      "role": "Item definitions & logic",
+      "bytes": 27073,
+      "lines": 622,
+      "sha256": "16fc68752f7d42c99c6abc9b81b44f88ec2628c68199d2a40cb479fbfe50a40e"
+    },
+    {
+      "file": "js/loteria-ui.js",
+      "role": "Loteria UI layer",
+      "bytes": 15800,
+      "lines": 324,
+      "sha256": "cc9a0329b9f728b9c436e9695ef815b4946cc760a1059fb5e3503d44f29ca061"
+    },
+    {
+      "file": "js/lottery.js",
+      "role": "Lottery / prize logic",
+      "bytes": 23077,
+      "lines": 450,
+      "sha256": "4091a8563c91af8b01b4ead33a69d98367687b4d5f56f8775a982f100919e2b3"
+    },
+    {
+      "file": "js/stable.js",
+      "role": "Stable / mount system",
+      "bytes": 4337,
+      "lines": 82,
+      "sha256": "8835751e177575905c42f358f7120f599b25be849cde0f3a0004b530a7471b7b"
+    },
+    {
+      "file": "js/trophy-hall.js",
+      "role": "Trophy Hall display",
+      "bytes": 5322,
+      "lines": 99,
+      "sha256": "e7473398a72086ba829ed9711f99812ccffc62cf9be793925a7c67031a5f1370"
+    },
+    {
+      "file": "electron-main.js",
+      "role": "Electron main process",
+      "bytes": 2340,
+      "lines": 65,
+      "sha256": "ab4bd882681290db7dc2cbd2916c17ea082c2132239cf7b5ddf1b7db03d01302"
+    },
+    {
+      "file": "preload.js",
+      "role": "Electron preload bridge",
+      "bytes": 634,
+      "lines": 17,
+      "sha256": "815e21299092763846fad51ddd4afb6782af0b6600dac9dfe3877ff93d5bdd55"
+    },
+    {
+      "file": "leaderboard-worker.js",
+      "role": "Cloudflare Worker - leaderboard API",
+      "bytes": 7241,
+      "lines": 163,
+      "sha256": "e260d1bf2d4c0b52754f793263e2be9d237cac1984acd5feaf114501f1ec86e2"
+    },
+    {
+      "file": "audit.html",
+      "role": "Codebase audit report",
+      "bytes": 19006,
+      "lines": 260,
+      "sha256": "8f582aab211fad4867cef76eeeb5f7c5d9eded04df7819d4674ca69b67fea93a"
+    },
+    {
+      "file": "baseline.html",
+      "role": "Sealed file manifest viewer",
+      "bytes": 12321,
+      "lines": 156,
+      "sha256": "381b46ad8af5910fd1332e5020775df973daa21bea70c477cc4bd6b042feb785"
+    },
+    {
+      "file": "bot-analytics.html",
+      "role": "Bot analytics dashboard",
+      "bytes": 35798,
+      "lines": 951,
+      "sha256": "f27569d525e03034b88f4d9fab2af5ebfaeb7954f662cb5e461be037fd45696f"
+    },
+    {
+      "file": "crucible-forge.html",
+      "role": "Crucible / forge tooling page",
+      "bytes": 23099,
+      "lines": 699,
+      "sha256": "61db50e6a3e947efb6c386689358db2dbcc40591715e961f7f16f605f60b992f"
+    },
+    {
+      "file": "manual-bot.html",
+      "role": "Bot operator manual",
+      "bytes": 20423,
+      "lines": 358,
+      "sha256": "e6fa4c6775586b93cefdfe95c7638960fb67ba7cbef7e71e5148a3d6e0474980"
+    },
+    {
+      "file": "manual-player.html",
+      "role": "Player manual",
+      "bytes": 26301,
+      "lines": 459,
+      "sha256": "4779e2f446be5d407f251fbb51da0fa6387bf71c3dd23d999ea4ce3458b589c0"
+    },
+    {
+      "file": "roadmap.html",
+      "role": "Roadmap",
+      "bytes": 11579,
+      "lines": 171,
+      "sha256": "c6e027680fe4f174b4dfa8312ef54d9cad55cfff498cc1a70759d88577d906d4"
+    }
+  ]
+}
