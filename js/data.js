@@ -2270,8 +2270,8 @@ const SUBCLASSES = {
                 'Moonbeam hex reduces enemy ATK for 2 turns'
             ],
             abilities: ['Moonbeam', 'Step of Night', 'Veil of Dusk'],
-            stats: { hp: 90, maxHp: 90, atk: 9, def: 8, mana: 25, maxMana: 25 },
-            special: 'Mana 25 / 25'
+            stats: { hp: 100, maxHp: 100, atk: 9, def: 8, mana: 30, maxMana: 30 },
+            special: 'Mana 30 / 30'
         }
     ]
 };

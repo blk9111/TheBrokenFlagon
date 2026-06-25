@@ -31,9 +31,9 @@
     --glow-mythic: rgba(255, 68, 68, 0.95);
 
     /* ── Extended palette vars (audit: replace hardcoded magic values) ── */
-    --gold-muted:   #d4b97a;   /* 19× was hardcoded */
-    --purple:       #c49eff;   /* 15× was hardcoded */
-    --gold-warm:    #d4a96a;   /* 13× was hardcoded */
+    --gold-muted:   var(--gold-muted);   /* 19× was hardcoded */
+    --purple:       var(--purple);   /* 15× was hardcoded */
+    --gold-warm:    var(--gold-warm);   /* 13× was hardcoded */
     --surface-1:    rgba(255,255,255,0.04);
     --surface-2:    rgba(255,255,255,0.07);
     --surface-3:    rgba(255,255,255,0.12);
@@ -423,7 +423,7 @@ body.in-run #game-container {
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #d4a96a;
+    color: var(--gold-warm);
     margin-bottom: 11px;
     padding-bottom: 10px;
     border-bottom: 1px solid rgba(200, 160, 70, 0.18);
@@ -445,7 +445,7 @@ body.in-run #game-container {
     background: rgba(200, 160, 70, 0.10);
     border: 1px solid rgba(200, 160, 70, 0.35);
     border-radius: 5px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font: inherit;
     font-size: 11px;
     font-weight: 700;
@@ -507,6 +507,21 @@ body.in-run #game-container {
     display: block;
     filter: drop-shadow(0 3px 8px rgba(0,0,0,0.5));
 }
+/* The portrait photo (warrior-m.png etc.) had NO sizing rule, so it rendered at
+   its native resolution inside the 96×116 frame — overflowing and showing a
+   mis-cropped dark fragment instead of the character. Fill the frame and crop
+   from the top so the face/upper body is what shows (character art is tall and
+   head-weighted), matching how the character-creation hero image is treated. */
+.cs-portrait-photo {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    object-position: 50% 18%;
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.5));
+}
 /* corner flourishes */
 .cs-portrait-frame::before,
 .cs-portrait-frame::after {
@@ -537,7 +552,7 @@ body.in-run #game-container {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--cs-accent, #d4a96a);
+    color: var(--cs-accent, var(--gold-warm));
     text-shadow: 0 2px 6px rgba(0,0,0,0.6);
 }
 .cs-portrait-tag {
@@ -576,7 +591,7 @@ body.in-run #game-container {
     font-weight: 700;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #d4a96a;
+    color: var(--gold-warm);
     margin-bottom: 8px;
     display: flex;
     align-items: center;
@@ -702,7 +717,7 @@ body.in-run #game-container {
     background: rgba(200, 160, 80, 0.08);
     border: 1px solid rgba(200, 160, 80, 0.25);
     border-radius: 4px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font: inherit;
     font-size: 11px;
     cursor: pointer;
@@ -4159,7 +4174,7 @@ body.in-run #game-container {
 }
 
 .log-quest {
-    border-left-color: #c49eff;
+    border-left-color: var(--purple);
     color: #ddc7ff;
 }
 
@@ -5894,20 +5909,20 @@ body.in-run #game-container {
 
 .quest-badge {
     --sc: var(--gold-muted);
-    border-color: var(--gold-muted) !important;
-    color: var(--gold-muted) !important;
+    border-color: var(--gold-muted);
+    color: var(--gold-muted);
 }
 
 .quest-done {
     --sc: #58c26d;
-    border-color: var(--green) !important;
-    color: var(--green) !important;
+    border-color: var(--green);
+    color: var(--green);
 }
 
 .quest-failed {
     --sc: #e14b4b;
-    border-color: var(--red) !important;
-    color: var(--red) !important;
+    border-color: var(--red);
+    color: var(--red);
 }
 
 /* ── Notice Board overlay ───────────────────────────────────────── */
@@ -6061,8 +6076,8 @@ body.in-run #game-container {
 
 .brew-badge {
     --sc: #58c26d;
-    border-color: var(--green) !important;
-    color: var(--green) !important;
+    border-color: var(--green);
+    color: var(--green);
 }
 
 /* ── Brewmaster overlay ─────────────────────────────────────────── */
@@ -6485,9 +6500,9 @@ body.in-run #game-container {
 /* ── Song status badge ──────────────────────────────────────────── */
 
 .song-badge {
-    --sc: #c49eff;
-    border-color: #c49eff !important;
-    color: #c49eff !important;
+    --sc: var(--purple);
+    border-color: var(--purple);
+    color: var(--purple);
 }
 
 /* ── Bard's Corner overlay ──────────────────────────────────────── */
@@ -6525,7 +6540,7 @@ body.in-run #game-container {
 
 #bard-header h2 {
     flex: 1;
-    color: #c49eff;
+    color: var(--purple);
     font-size: 18px;
 }
 
@@ -6549,7 +6564,7 @@ body.in-run #game-container {
 
 #bard-close-btn:hover {
     border-color: #7B5EA7;
-    color: #c49eff;
+    color: var(--purple);
     background: rgba(123, 94, 167, 0.1);
 }
 
@@ -6584,7 +6599,7 @@ body.in-run #game-container {
 }
 
 .bard-row-active {
-    border-color: #c49eff !important;
+    border-color: var(--purple) !important;
     background: rgba(196, 158, 255, 0.08) !important;
 }
 
@@ -6623,7 +6638,7 @@ body.in-run #game-container {
     background: rgba(123, 94, 167, 0.18);
     border: 1px solid #7B5EA7;
     border-radius: 5px;
-    color: #c49eff;
+    color: var(--purple);
     cursor: pointer;
     font: inherit;
     font-size: 13px;
@@ -6644,8 +6659,8 @@ body.in-run #game-container {
 }
 
 .bard-btn-active {
-    border-color: #c49eff;
-    color: #c49eff;
+    border-color: var(--purple);
+    color: var(--purple);
     background: rgba(196, 158, 255, 0.14) !important;
 }
 
@@ -6994,7 +7009,7 @@ body.in-run #game-container {
 
 #magic-dealer-header h2 {
     flex: 1;
-    color: #c49eff;
+    color: var(--purple);
     font-size: 18px;
 }
 
@@ -7018,7 +7033,7 @@ body.in-run #game-container {
 
 #magic-dealer-close-btn:hover {
     border-color: #7b5fff;
-    color: #c49eff;
+    color: var(--purple);
     background: rgba(123, 95, 255, 0.1);
 }
 
@@ -7057,8 +7072,8 @@ body.in-run #game-container {
 
 .magic-tab-active {
     background: rgba(123, 95, 255, 0.2) !important;
-    border-color: #c49eff !important;
-    color: #c49eff !important;
+    border-color: var(--purple) !important;
+    color: var(--purple) !important;
 }
 
 #magic-stock-list,
@@ -7149,7 +7164,7 @@ body.in-run #game-container {
     background: rgba(123, 95, 255, 0.16);
     border: 1px solid #7b5fff;
     border-radius: 5px;
-    color: #c49eff;
+    color: var(--purple);
     cursor: pointer;
     font: inherit;
     font-size: 13px;
@@ -7222,9 +7237,9 @@ body.in-run #game-container {
 .magic-enchant-btn {
     padding: 5px 10px;
     background: rgba(196, 158, 255, 0.12);
-    border: 1px solid #c49eff;
+    border: 1px solid var(--purple);
     border-radius: 4px;
-    color: #c49eff;
+    color: var(--purple);
     cursor: pointer;
     font: inherit;
     font-size: 11px;
@@ -8532,7 +8547,7 @@ body.in-run #game-container {
 
 #bestiary-header h2 {
     margin: 0;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font-size: 18px;
     letter-spacing: 0.04em;
     display: flex;
@@ -8559,7 +8574,7 @@ body.in-run #game-container {
     transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-#bestiary-close-btn:hover { border-color: #d4a96a; color: #d4a96a; }
+#bestiary-close-btn:hover { border-color: var(--gold-warm); color: var(--gold-warm); }
 
 .bestiary-subtitle {
     margin: 0;
@@ -8653,7 +8668,7 @@ body.in-run #game-container {
     margin-top: auto;
     padding-top: 4px;
     font-size: 10px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
@@ -9257,7 +9272,7 @@ body.in-run #game-container {
 .sb-fallen-title {
     font-family: var(--font-display);
     font-size: 16px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     text-align: center;
     margin-bottom: 6px;
 }
@@ -9421,7 +9436,7 @@ body.in-run #game-container {
     background: rgba(200, 160, 80, 0.1);
     border: 1px solid rgba(200, 160, 80, 0.4);
     border-radius: 5px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -9467,7 +9482,7 @@ body.in-run #game-container {
     background: rgba(200, 160, 80, 0.08);
     border: 1px solid rgba(200, 160, 80, 0.3);
     border-radius: 5px;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -12478,7 +12493,7 @@ div[id$="-inner"]::before {
     margin: 0 0 4px;
     font-size: 17px;
     font-weight: 700;
-    color: #d4a96a;
+    color: var(--gold-warm);
     font-family: var(--font-head);
 }
 
@@ -12782,8 +12797,12 @@ div[id$="-inner"]::before {
     display: block;
     width: auto;
     height: auto;
-    max-width: 96%;
-    max-height: min(72vh, 620px);
+    /* Was capped at 96% / min(72vh,620px), which left large empty black margins
+       above and below the portrait in the tall art column. Raise the caps so the
+       portrait fills the available space — bounded by the column height so it
+       never overflows past the subclass pills below it. */
+    max-width: 100%;
+    max-height: min(88vh, 860px);
     object-fit: contain;
     border-radius: 14px;
     box-shadow:
@@ -14345,7 +14364,7 @@ div[id$="-inner"]::before {
     font-weight: 700;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #d4a96a;
+    color: var(--gold-warm);
     margin-bottom: 3px;
 }
 .twg-sub {
