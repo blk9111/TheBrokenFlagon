@@ -1,25 +1,8 @@
-const GAME_VERSION = '1.15.0';
+const GAME_VERSION = '2.1.0';
 
 const DUNGEON_NAME = 'The Dungeon of Ash';
 
 const MAX_DUNGEON_FLOOR = 100;
-
-// ── Game state machine ───────────────────────────────────────────────────────
-// Canonical enum for the current screen/mode. New code reads getGameMode()
-// instead of branching on floor===0, inCourtyard, inArenaBout, gameOver etc.
-// Legacy booleans remain while other files migrate; deriveLegacyMode() bridges
-// them. Assign gameState.mode in each transition function (descendFloor,
-// returnToTavern, etc.) as those files are updated — the derive fallback keeps
-// the enum correct even before explicit assignment.
-const GAME_STATE = Object.freeze({
-    TITLE:   'title',    // title screen / no active session
-    TAVERN:  'tavern',   // tavern hub, floor 0, not in a bout
-    PREPARE: 'prepare',  // character prep / loadout screen
-    DUNGEON: 'dungeon',  // active dungeon run, floor > 0
-    PIT:     'pit',      // Pit bout in progress (or Pit screen)
-    DEATH:   'death',    // game-over screen
-    RESULTS: 'results',  // post-run results screen
-});
 
 // Maximum number of allied minions the Necromancer subclass can maintain
 // simultaneously. Referenced in both getSubclassMeterHtml (display) and
@@ -157,10 +140,6 @@ function recordDailyResult(dateKey, floor, won, className, subclass) {
     }
     // Earn 2 Renown for participating in a daily, once per day
     if (!prev && typeof earnRenown === 'function') earnRenown(2, 'daily challenge');
-    // Refresh the best-ever streak record now that today is logged. (getDailyStreak
-    // reads dailyRecords, which we just updated, so this captures today.)
-    const cur = getDailyStreak();
-    if (cur > (gameMeta.bestDailyStreak || 0)) gameMeta.bestDailyStreak = cur;
     // Prune old records so the object can't grow unbounded over months of play.
     const keys = Object.keys(gameMeta.dailyRecords).sort();
     while (keys.length > 60) {
@@ -174,44 +153,6 @@ function recordDailyResult(dateKey, floor, won, className, subclass) {
 // drives a simple "streak/dedication" readout and a future achievement hook.
 function getDailyPlayCount() {
     return gameMeta.dailyRecords ? Object.keys(gameMeta.dailyRecords).length : 0;
-}
-
-// Current daily streak: how many consecutive UTC days — counting back from today
-// (or yesterday, so the streak is still "alive" until the day is missed) — the
-// player has a Daily Challenge record. Computed directly from dailyRecords so it
-// can never drift out of sync with what was actually played. No separate stored
-// counter to corrupt.
-//
-// Streak stays alive if they played today OR yesterday (today not yet done is a
-// pending day, not a broken streak). Returns 0 if neither.
-function getDailyStreak(today = getDailyKey()) {
-    const records = gameMeta.dailyRecords || {};
-    // Walk backwards from an anchor day, counting consecutive days with a record.
-    const dayMs = 86400000;
-    const todayDate = new Date(today + 'T00:00:00Z');
-
-    // Decide the anchor: if today is played, start counting at today; else if
-    // yesterday is played, start at yesterday (today is still pending); else 0.
-    const yesterdayKey = getDailyKey(new Date(todayDate.getTime() - dayMs));
-    let anchor;
-    if (records[today]) anchor = todayDate;
-    else if (records[yesterdayKey]) anchor = new Date(todayDate.getTime() - dayMs);
-    else return 0;
-
-    let streak = 0;
-    let cursor = anchor;
-    while (records[getDailyKey(cursor)]) {
-        streak++;
-        cursor = new Date(cursor.getTime() - dayMs);
-    }
-    return streak;
-}
-
-// The player's best (longest) daily streak ever reached. Persisted in gameMeta
-// so a broken current streak doesn't erase the personal record. Updated whenever
-// a daily is recorded (see recordDailyResult).
-function getBestDailyStreak() {
-    return gameMeta.bestDailyStreak || 0;
 }
 
 
@@ -609,10 +550,6 @@ const ctx = canvas.getContext('2d');
 const gameState = {
     player: null,
     floor: 0,
-    // Current screen/mode — set explicitly by transition functions as they
-    // are migrated. getGameMode() derives this from legacy booleans as a
-    // fallback so the enum is correct even before explicit assignment.
-    mode: null,
     dungeon: [],
     revealed: [],
     rooms: [],
@@ -628,20 +565,20 @@ const gameState = {
     screenShakeAngle: 0,
     hitStopFrames: 0,
     innkeeper: { x: 12, y: 5, name: 'Innkeeper' },
-    merchant: { x: 20, y: 4, name: 'Merchant' },
-    blacksmith: { x: 20, y: 13, name: 'Blacksmith' },
-    trainer: { x: 12, y: 4, name: 'Trainer' },
-    bank: { x: 4, y: 4, name: 'Bank' },
-    questBoard: { x: 4, y: 13, name: 'Quest Board' },
-    loteriaCaller: { x: 8, y: 13, name: 'Lotería Caller' },
+    merchant: { x: 18, y: 9, name: 'Merchant' },
+    blacksmith: { x: 22, y: 7, name: 'Blacksmith' },
+    trainer: { x: 22, y: 11, name: 'Trainer' },
+    bank: { x: 10, y: 2, name: 'Bank' },
+    questBoard: { x: 2, y: 7, name: 'Quest Board' },
     dungeonEntrance: { x: EXIT_X, y: EXIT_Y, name: 'Dungeon Entrance' },
     gambler: { x: 5, y: 14, name: 'Dice Table' },
     brewmaster: { x: 18, y: 14, name: 'Brewmaster' },
     bard: { x: 4, y: 6, name: 'Bard' },
     stashChest: { x: 7, y: 2, name: 'Shared Stash' },
-    magicDealer: { x: 12, y: 13, name: 'Magic Dealer' },
+    magicDealer: { x: 14, y: 14, name: 'Magic Dealer' },
     cellar: { x: 11, y: 14, name: 'Cellar' },
-    arenaGate: { x: 12, y: 16, name: 'The Pit' },
+    arenaGate: { x: 6, y: 12, name: 'The Pit' },
+    loteriaCaller: { x: 8, y: 13, name: 'La Lotería' },
     // Town NPCs — only active when gameState.inTown === true
     townStorekeeper: { x: 5, y: 4, name: 'General Store' },
     townTemple:      { x: 19, y: 4, name: 'Temple' },
@@ -752,9 +689,6 @@ const gameState = {
     allies: [],
     decoy: null,
     arenaOpen: false,
-    profileOpen: false,
-    trophyOpen: false,
-    stableOpen: false,
     // Set to true while a Pit bout is in progress. Drives combat-mode
     // checks in entities.js (enemy turns, attack routing) and intercepts
     // showGameOver() for non-ironman losses in ui.js.
@@ -774,24 +708,6 @@ const gameState = {
     floorCache: {},
     floorCacheOrder: [], // insertion-order list for LRU eviction
 };
-
-// ── Mode accessor ─────────────────────────────────────────────────────────────
-// Always call getGameMode() — never read gameState.mode directly — so the
-// derive bridge stays correct during the multi-phase migration.
-// New code must NOT read inArena, inArenaBout, or compare floor===0 for
-// routing: use getGameMode() only. Violations caught by grep in review.
-function deriveLegacyMode(s) {
-    if (!s)                          return GAME_STATE.TITLE;
-    if (s.inArenaBout || s.inArena)  return GAME_STATE.PIT;
-    if (s.gameOver)                  return GAME_STATE.DEATH;
-    if (s.floor === 0)               return GAME_STATE.TAVERN;
-    return GAME_STATE.DUNGEON;
-}
-
-function getGameMode(s) {
-    const state = s || gameState;
-    return state.mode ?? deriveLegacyMode(state);
-}
 
 
 const DEATH_FLAVOR = {
@@ -999,21 +915,10 @@ let gameMeta = {
     deaths: 0,
     bossesSlain: 0,
     achievements: {},
-    // Pit persistence — fame and bout counts survive across runs
-    pitFame: 0,
-    pitBouts: 0,
-    pitWins: 0,
-    // Per-opponent win counts for the arena. The renown reward is capped at the
-    // first 3 wins vs each foe (anti-farming, see arena.js). MUST persist or the
-    // cap resets every launch and renown can be farmed by relaunching. Declared
-    // here AND restored in loadMetaProgress (save.js).
-    pitRenownCounts: {},
-    // Hybrid meta-progression (Phase 3+)
-    // flagonCoins: permanent power currency, never lost on death.
-    // treasurySpent: { upgradeId: true } — which Treasury nodes are bought.
-    // treasuryLevel is NOT stored; derived via getTreasuryLevel() in save.js.
-    flagonCoins: 0,
-    treasurySpent: {},
+    // Arena persistence — fame and bout counts survive across runs
+    arenaFame: 0,
+    arenaBouts: 0,
+    arenaWins: 0,
     // Tavern Renown — earned from play across all systems, gates the ambient
     // and structural upgrades that make the tavern visually richer and add
     // services over time. See RENOWN_MILESTONES and earnRenown().
@@ -1026,22 +931,10 @@ let gameMeta = {
     // killedBy, ts }. Capped at 8 so it never grows unbounded.
     fallen: [],
     dailyRecords: {},
-    // Best (longest) daily-challenge streak ever reached. Current streak is
-    // derived live from dailyRecords (see getDailyStreak); only the best is
-    // stored. MUST be restored in loadMetaProgress or it resets each launch.
-    bestDailyStreak: 0,
     casinoJackpot: 50,
     casinoJackpotLastClaimed: null,
     casinoWheelSpins: 0,
     casinoWheelBigWins: 0,
-    // Weekly lottery (see lottery.js). Persisted so the real-time week-long
-    // wait survives across sessions — the whole point of the mechanic.
-    lottery: null,
-    lotteryGrandWon: false,
-    // Lifetime La Lotería wins. Written in loteria-ui.js on each win; must be
-    // declared here AND restored in loadMetaProgress (save.js) or it silently
-    // resets every launch — the loader reads gameMeta field-by-field.
-    loteriaWins: 0,
     stats: {
         totalKills: 0,
         slimeKills: 0,
@@ -1442,146 +1335,6 @@ const INNKEEPER_FAME_LINES = {
     Legend:     'The innkeeper goes quiet as you approach, then bows his head. "A living legend, under my roof. The next round is on the house. Every round is."',
     Undying:    'The innkeeper simply stares. Then, slowly: "I\'ve been running this tavern thirty years. I never thought I\'d see someone like you."',
 };
-
-// ── Tavern Reputation: how the room reacts when you walk in ────────────────────
-// Keyed by Pit title. The line is shown on tavern entry, scaling the crowd's
-// reaction to your fame. Below 'Challenger' the room ignores you.
-const TAVERN_ENTRY_REACTIONS = {
-    Unknown:    null, // nobody notices — no message
-    Challenger: 'A couple of patrons glance up as you enter, then return to their drinks.',
-    Contender:  'Heads turn as you step inside. Someone murmurs your name to the person beside them.',
-    Gladiator:  'A ripple of recognition moves through the room. A few mugs are raised in your direction.',
-    Champion:   'The tavern erupts as you enter — cheers, stamping boots, a spilled tankard or two.',
-    Warlord:    'The room rises as one. Bettors press toward you, shouting odds for your next bout.',
-    Legend:     'Silence falls, then thunder. Every soul in the Flagon is on their feet, roaring your name.',
-    Undying:    'The crowd does not cheer. They stare in something like awe, as if unsure you are real.',
-};
-
-// ── Random Patrons ────────────────────────────────────────────────────────────
-// Ambient overheard dialogue, shown occasionally on tavern entry. Pure
-// atmosphere — each is a named patron archetype muttering a line. {floor}
-// templates to the player's best floor for a touch of personalization.
-const TAVERN_PATRONS = [
-    { who: 'A drunk miner', line: '"Floor 12? That\'s where my brother went down. Never came back up."' },
-    { who: 'A retired knight', line: '"I fought in the Pit once. Once was enough. Look at my hands — they still shake."' },
-    { who: 'A treasure hunter', line: '"They say the deeper floors hide relics worth a kingdom. They also say nobody\'s seen them and lived."' },
-    { who: 'A hooded scholar', line: '"The ash-curse isn\'t random, you know. Something down there is making more of them."' },
-    { who: 'A nervous merchant', line: '"You\'re going back down? After what happened on Floor {floor}? Braver than me."' },
-    { who: 'An old bard', line: '"I\'ve a song half-written about a fighter like you. Don\'t die before the second verse, eh?"' },
-    { who: 'A one-eyed gambler', line: '"I had good coin on you last bout. Don\'t make me regret the next one."' },
-    { who: 'A tavern regular', line: '"Best floor of {floor}, they say. The Pit Master\'s started watching your runs."' },
-    { who: 'A weary healer', line: '"Bring me back alive and I\'ll patch you for free. That\'s the deal. Stay alive."' },
-    { who: 'A wide-eyed squire', line: '"Is it true? Did you really make it to Floor {floor}? They\'ll never believe me back home."' },
-];
-
-// ── Earned Titles ─────────────────────────────────────────────────────────────
-// Honorifics earned through play, displayed in the Trophy Hall. These COMPLEMENT
-// the Pit fame titles (Challenger…Undying) rather than replace them — the Pit
-// title is your live rank; these are permanent badges of deeds done. Each has a
-// predicate evaluated against gameState/gameMeta at render time.
-const EARNED_TITLES = [
-    { id: 'firstBlood',   name: 'First Blood',        desc: 'Slay your first enemy.',
-      test: () => ((gameMeta.stats && gameMeta.stats.totalKills) || 0) >= 1 },
-    { id: 'delver',       name: 'The Delver',         desc: 'Reach Floor 10.',
-      test: () => (gameState.bestFloor || 0) >= 10 },
-    { id: 'deepDweller',  name: 'Deep Dweller',       desc: 'Reach Floor 25.',
-      test: () => (gameState.bestFloor || 0) >= 25 },
-    { id: 'abyssWalker',  name: 'Abyss Walker',       desc: 'Reach Floor 50.',
-      test: () => (gameState.bestFloor || 0) >= 50 },
-    { id: 'conqueror',    name: 'Conqueror of Ash',   desc: 'Reach Floor 100 — face The Fallen God.',
-      test: () => (gameState.bestFloor || 0) >= 100 },
-    { id: 'bossbane',     name: 'Bossbane',           desc: 'Slay 10 bosses.',
-      test: () => (gameMeta.bossesSlain || 0) >= 10 },
-    { id: 'pitFighter',   name: 'Pit Fighter',        desc: 'Win 10 Pit bouts.',
-      test: () => (gameMeta.pitWins || 0) >= 10 },
-    { id: 'crowdFavorite',name: 'Crowd Favorite',     desc: 'Win 50 Pit bouts.',
-      test: () => (gameMeta.pitWins || 0) >= 50 },
-    { id: 'nemesisSlayer',name: 'Nemesis Slayer',     desc: 'Hold a winning record against every champion you have fought (min. 1 fight each).',
-      test: () => {
-          const r = gameMeta.rivals || {};
-          const ids = Object.keys(r);
-          if (!ids.length) return false;
-          return ids.every(id => (r[id].wins || 0) > (r[id].losses || 0));
-      } },
-    { id: 'goldBaron',    name: 'Gold Baron',         desc: 'Earn 50,000 gold across all runs.',
-      test: () => (gameMeta.totalGold || 0) >= 50000 },
-    { id: 'survivor',     name: 'The Survivor',       desc: 'Complete 25 runs.',
-      test: () => (gameMeta.runs || 0) >= 25 },
-    { id: 'fortunesChosen', name: 'Fortune\u2019s Chosen', desc: 'Win the Grand Prize in the weekly lottery.',
-      test: () => !!gameMeta.lotteryGrandWon },
-];
-
-// Returns { earned: [...], locked: [...] } evaluating every title's predicate.
-function getEarnedTitles() {
-    const earned = [], locked = [];
-    for (const t of EARNED_TITLES) {
-        let ok = false;
-        try { ok = !!t.test(); } catch (_) { ok = false; }
-        (ok ? earned : locked).push(t);
-    }
-    return { earned, locked };
-}
-
-
-// ── Dungeon Regions (World Map B2 — regional theming) ──────────────────────────
-// The dungeon's 100 floors are divided into four named depth bands. Each region
-// has its own identity: a name, a color/flavor for the transition banner, a
-// WEIGHTED enemy pool (drawn entirely from the existing ENEMY_TYPES roster — no
-// new enemies), and a loot-rarity nudge. This makes the descent feel like a
-// journey through distinct places without adding a navigation layer or new
-// content. Floors still gate enemies by the original chooseEnemyType ladder;
-// regions reweight WHICH of the floor-eligible types show up so each band has a
-// recognizable character.
-//
-// weights: relative spawn weights. A type only appears if it's also unlocked by
-// the floor (see chooseEnemyType), so listing a deep type in an early region is
-// harmless — it simply won't spawn until its floor.
-const DUNGEON_REGIONS = [
-    {
-        id: 'crypt', name: 'The Ashen Crypt', floors: [1, 25],
-        color: '#9b8c6a',
-        flavor: 'Crumbling tombs choked with ash. The dead do not rest here.',
-        weights: { goblin: 3, slime: 3, skeleton: 4, archer: 2, brute: 2, bat: 2, spider: 2, cultist: 1, thief: 1 },
-        lootBonus: 0.00,
-    },
-    {
-        id: 'mines', name: 'The Forgotten Mines', floors: [26, 50],
-        color: '#c98b4a',
-        flavor: 'Collapsed shafts and veins of cursed ore. Something still digs.',
-        weights: { brute: 3, imp: 3, ratman: 3, ghoul: 3, lizardman: 2, orc: 3, necromancer: 1, warden: 2 },
-        lootBonus: 0.04,
-    },
-    {
-        id: 'cathedral', name: 'The Sunken Cathedral', floors: [51, 75],
-        color: '#5fa8c9',
-        flavor: 'Drowned naves and broken altars. Faith curdled into something else.',
-        weights: { ghoul: 3, necromancer: 3, darkknight: 3, cultist: 3, warden: 3, demon: 2, lizardman: 2 },
-        lootBonus: 0.08,
-    },
-    {
-        id: 'peaks', name: 'The Frost Peaks', floors: [76, 100],
-        color: '#a9c7e0',
-        flavor: 'A frozen summit above the ash. The air itself wants you dead.',
-        weights: { demon: 4, darkknight: 3, orc: 3, warden: 3, ghoul: 2, necromancer: 2 },
-        lootBonus: 0.12,
-    },
-];
-
-// The region a given floor belongs to (falls back to the first/last band for
-// floors outside the defined ranges, so this never returns null).
-function getRegionForFloor(floor) {
-    for (const r of DUNGEON_REGIONS) {
-        if (floor >= r.floors[0] && floor <= r.floors[1]) return r;
-    }
-    return floor < DUNGEON_REGIONS[0].floors[0]
-        ? DUNGEON_REGIONS[0]
-        : DUNGEON_REGIONS[DUNGEON_REGIONS.length - 1];
-}
-
-
-
-
-
 
 
 // Legendary guest NPCs — each appears in the tavern permanently after the
@@ -2113,11 +1866,7 @@ const DUNGEON_EVENTS = [
 
 function pickDungeonEvent() {
     const totalWeight = DUNGEON_EVENTS.reduce((s, e) => s + e.weight, 0);
-    // Must use the seeded rng(), not Math.random(): the chosen event applies
-    // real gameplay modifiers (enemyHpMult, lootMult, spawn/loot bias), so the
-    // same seed code must reproduce the same event for the "share a seed" /
-    // daily-challenge promise to hold.
-    let roll = rng() * totalWeight;
+    let roll = Math.random() * totalWeight;
     for (const ev of DUNGEON_EVENTS) {
         roll -= ev.weight;
         if (roll <= 0) return ev.id === 'none' ? null : ev;
@@ -2249,27 +1998,32 @@ function spinWheel() {
 // both the glowing floor markers under NPCs and the "[Space] <verb> <label>"
 // prompt that appears when the player stands next to one. Order is the on-screen
 // reading order; arenaGate is handled separately (courtyard-gated).
-// Tavern interior social NPCs — checked for adjacency/floor-markers
-// when gameState.inCourtyard is false.
-const TAVERN_INTERACTABLES = [
-    { key: 'innkeeper',  verb: 'Rest at',    label: 'Innkeeper',    color: '#ffd65a' },
-    { key: 'gambler',    verb: 'Play at',    label: 'Dice Table',   color: '#ff9f58' },
-    { key: 'brewmaster', verb: 'Visit',      label: 'Brewmaster',   color: '#c98bff' },
-    { key: 'bard',       verb: 'Hear the',   label: 'Bard',         color: '#62b9ff' },
-    { key: 'stashChest', verb: 'Open the',   label: 'Shared Stash', color: '#d4b97a' },
-    { key: 'cellar',     verb: 'Search the', label: 'Cellar',       color: '#8a6f4e' },
+// NPCs visible and interactable in the Market (courtyard).
+// Used by render.js drawMarketFloorMarkers() for floor glow markers,
+// and by tavern.js interactInTavern() for the inCourtyard branch.
+const MARKET_INTERACTABLES = [
+    { key: 'bank',          verb: 'Use the',    label: 'Bank',         color: '#ffd65a' },
+    { key: 'trainer',       verb: 'Train with', label: 'Trainer',      color: '#58c26d' },
+    { key: 'merchant',      verb: 'Trade with', label: 'Merchant',     color: '#5ad1c2' },
+    { key: 'questBoard',    verb: 'Read the',   label: 'Quest Board',  color: '#d4b97a' },
+    { key: 'loteriaCaller', verb: 'Play',        label: 'La Loter\u00eda', color: '#ff9f58' },
+    { key: 'magicDealer',   verb: 'Visit',      label: 'Magic Dealer', color: '#9c6dff' },
+    { key: 'blacksmith',    verb: 'Visit',      label: 'Blacksmith',   color: '#c45c00' },
 ];
 
-// Market commerce NPCs — checked for adjacency/floor-markers when
-// gameState.inCourtyard is true. Positions are courtyard-grid coordinates.
-const MARKET_INTERACTABLES = [
+const TAVERN_INTERACTABLES = [
+    { key: 'innkeeper',   verb: 'Rest at',    label: 'Innkeeper',    color: '#ffd65a' },
     { key: 'merchant',    verb: 'Trade with', label: 'Merchant',     color: '#5ad1c2' },
     { key: 'blacksmith',  verb: 'Visit',      label: 'Blacksmith',   color: '#c45c00' },
     { key: 'trainer',     verb: 'Train with', label: 'Trainer',      color: '#58c26d' },
     { key: 'bank',        verb: 'Use the',    label: 'Bank',         color: '#ffd65a' },
     { key: 'questBoard',  verb: 'Read the',   label: 'Quest Board',  color: '#d4b97a' },
-    { key: 'loteriaCaller', verb: 'Play',     label: 'Lotería',      color: '#ff5e8a' },
+    { key: 'gambler',     verb: 'Play at',    label: 'Dice Table',   color: '#ff9f58' },
+    { key: 'brewmaster',  verb: 'Visit',      label: 'Brewmaster',   color: '#c98bff' },
+    { key: 'bard',        verb: 'Hear the',   label: 'Bard',         color: '#62b9ff' },
+    { key: 'stashChest',  verb: 'Open the',   label: 'Shared Stash', color: '#d4b97a' },
     { key: 'magicDealer', verb: 'Visit',      label: 'Magic Dealer', color: '#9c6dff' },
+    { key: 'cellar',      verb: 'Search the', label: 'Cellar',       color: '#8a6f4e' },
 ];
 
 // Returns the interactable the player is currently adjacent to (Chebyshev ≤ 1),
@@ -2278,17 +2032,9 @@ function getAdjacentInteractable() {
     const p = gameState.player;
     if (!p || gameState.floor !== 0) return null;
     if (gameState.inCourtyard) {
-        // Check Pit gate first (highest priority)
         const g = gameState.arenaGate;
         if (g && Math.max(Math.abs(p.x - g.x), Math.abs(p.y - g.y)) <= 1) {
             return { npc: g, verb: 'Enter', label: 'The Pit', color: '#ff9f58' };
-        }
-        // Check Market vendor NPCs
-        for (const def of MARKET_INTERACTABLES) {
-            const npc = gameState[def.key];
-            if (npc && Math.max(Math.abs(p.x - npc.x), Math.abs(p.y - npc.y)) <= 1) {
-                return { npc, verb: def.verb, label: def.label, color: def.color };
-            }
         }
         return null;
     }
@@ -2561,33 +2307,13 @@ const STATUS_META = {
 // section carries the fuller writeup. Most recent first.
 const CHANGELOG = [
     {
-        version: '1.15.0',
+        version: '2.1.0',
         highlights: [
-            'Daily streaks. Play the Daily Challenge on consecutive days and your streak grows — the title screen greets you back with your running count and your longest streak ever. Miss a day and it resets, so keep the chain alive.',
+            'The Pit remembers you. Champions now track your head-to-head record — beat one repeatedly and a rivalry forms, shown in your Profile. Bigger fights open with the Pit Master\'s announcement before the gate slams.',
+            'Lotería plays by the traditional rules: Línea now wins on ANY line — row, column, or diagonal — alongside Cuatro Esquinas, Centro, and La Tabla Llena. Winning always returns at least your stake, so a win never costs you coins.',
+            'Sell captured creatures to a Pit broker for coin instead of fighting them.',
+            'Character portraits fixed: the character sheet now frames your hero correctly, and the creation-screen portrait fills the space it\'s given.',
         ],
-        note: 'Keep the chain alive.',
-    },
-    {
-        version: '1.14.0',
-        highlights: [
-            'Two new games of chance in the tavern district. The Casino now hosts a weekly Lottery — buy tickets with Flagon Coins for a shot at a tiered prize and the title "Fortune\\u2019s Chosen," drawn fresh each week.',
-            'La Loter\\u00eda comes to the market. A caller works a stall in the courtyard, drawing the 54 traditional cards one by one — mark them on your tabla before the next is called, complete the announced pattern, and call ¡Loter\\u00eda! Pick your pace; faster calling pays more.',
-            'A returning hero is greeted at the door. The title screen now welcomes you back with your personal list of next goals — the boss waiting at the next depth, your next arena rank, the renown and creatures still to claim.',
-            'Both games of chance tuned to feed the economy rather than break it — wins are a genuine reward, not a coin fountain.',
-        ],
-        note: 'The reasons to return.',
-    },
-    {
-        version: '1.13.0',
-        highlights: [
-            'Arena Rivals: every champion now remembers you. Win or lose, your head-to-head record follows you — "Iron Warden (2-3)" — surfaced on every bout card and called out as you step into the Pit. Build a nemesis, or a list of the ones you dominate.',
-            'A new Player Profile — one place to see who you\\u2019ve become: your Pit fame and title, tavern renown, flagon coins, best floor, lifetime kills and gold, and every arena rivalry, sorted by how often you\\u2019ve clashed.',
-            'The Hall of Legends. Eleven earned titles — from First Blood to Conqueror of Ash to Nemesis Slayer — each unlocked by your deeds, displayed alongside your records and current Pit rank.',
-            'The Pit Master speaks. Champions now get a proper introduction before a bout — a full dramatic crawl the first time you face them (and always for bosses), a quick line on the rematches, so the spectacle never wears thin.',
-            'The tavern reacts to your fame. Walk in as an Unknown and nobody looks up; walk in as a Legend and the room comes to its feet. Random patrons mutter overheard tales, some about your own deepest descents.',
-            'The dungeon now has regions. Descend through the Ashen Crypt, the Forgotten Mines, the Sunken Cathedral, and the Frost Peaks — each with its own character, enemy mix, and loot, announced as you cross into it.',
-            'A new Monster Stable: manage the creatures you\\u2019ve caged this run — send them to fight in the Pit, sell them to a broker, or set them free.',
-        ]
     },
     {
         version: '1.12.0',
@@ -2601,7 +2327,6 @@ const CHANGELOG = [
             'All five boss balance fixes: boss ATK scaling reduced from 1.4× to 1.1× per floor, boss HP scaling reduced from 12 to 10 per floor. Orc ATK 14→12, Dark Knight DEF 8→6, Demon ATK 16→14.',
             'Combat edge cases closed: decoy HP no longer shows negative values, arena entry now clears all status effects so poison cannot kill you at full HP on turn 1, and boss variant enemies (wraiths, splitters) can no longer be captured.',
             'Quit to Desktop button added to the Settings panel (O key) and fully wired via Electron IPC — the title screen quit button actually works now.',
-            'A sweeping visual & UX overhaul: class-specific character-creation FX, a redesigned gender picker, full-screen death/victory overlays, an animated combat log, achievement toasts, cinematic boss reveals, item rarity shine effects, level-up stat badges, and a run-history panel.',
             'Numerous bot and engine fixes throughout.',
         ]
     },

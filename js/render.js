@@ -266,17 +266,6 @@ function resizeCanvasForDPI() {
     ctx.imageSmoothingQuality = 'high';
 }
 
-// Force the next resizeCanvasForDPI() to recompute the backing store even if the
-// displayed size looks unchanged. Needed after the canvas was hidden
-// (display:none → 0×0 layout) and shown again, which can otherwise leave a stale
-// cached signature and a mis-scaled backing store (the "huge blurry tiles" bug).
-function invalidateCanvasSize() {
-    _lastDprSig = null;
-    if (typeof resizeCanvasForDPI === 'function') {
-        try { resizeCanvasForDPI(); } catch (_) {}
-    }
-}
-
 // Recompute on viewport changes. Debounced via rAF so a drag-resize doesn't
 // thrash the backing store allocation.
 let _resizeRaf = null;
@@ -288,6 +277,30 @@ if (typeof window !== 'undefined') {
 }
 
 function draw() {
+    // Headless / minimap performance guard. The bot harness (bot-controller.js)
+    // sets window._botSkipRender = true whenever its display mode is anything
+    // other than "full" (i.e. Minimap or Headless), to skip the expensive
+    // main-canvas paint during fast automated batches. The harness already
+    // hides the canvas stage itself; this guard is what actually stops the
+    // per-frame drawing. Without it the "big map" keeps painting behind the
+    // dashboard even in headless mode — exactly the bug we're fixing.
+    //
+    // gameState.headless / botDisplay / renderMode are also honored as
+    // fallbacks so a future non-bot headless caller works without coupling.
+    if (
+        (typeof window !== 'undefined' && window._botSkipRender) ||
+        gameState.headless === true ||
+        gameState.botDisplay === 'headless' ||
+        gameState.renderMode === 'headless'
+    ) {
+        // Drain any visual effects that were queued before suppression kicked in
+        // (or by code paths that don't gate on _effectsSuppressed). drawEffects()
+        // won't run to drain them while we're skipping draw, so clear them here
+        // to keep gameState.effects from growing unbounded across a batch.
+        if (gameState.effects && gameState.effects.length) gameState.effects.length = 0;
+        return;
+    }
+
     // Ensure the backing store matches the current display size & DPR. Cheap
     // (signature-guarded) after the first call, so safe to invoke every frame.
     resizeCanvasForDPI();
@@ -3603,7 +3616,22 @@ function _effectCoords(x, y, offsetY = 0) {
 }
 
 
+// Effects (floating text, damage numbers, death anims, bursts) are purely
+// visual and are pushed onto gameState.effects, then drained inside
+// drawEffects() — which runs from draw(). When the bot suppresses rendering
+// (headless/minimap during fast batches), draw() early-returns, so the effects
+// array is FED but never DRAINED and grows unbounded across the batch — a real
+// memory leak in Turbo runs. Since nothing will ever render or drain them in
+// that mode, the pushers below no-op when rendering is suppressed.
+function _effectsSuppressed() {
+    return (typeof window !== 'undefined' && window._botSkipRender) ||
+           gameState.headless === true ||
+           gameState.botDisplay === 'headless' ||
+           gameState.renderMode === 'headless';
+}
+
 function addDamageNumber(x, y, amount, options = {}) {
+    if (_effectsSuppressed()) return;
     const { crit = false, color = '#fff8db', suffix = '!', icon = '' } = options;
     const { px, py } = _effectCoords(x, y);
     gameState.effects.push({
@@ -3619,6 +3647,7 @@ function addDamageNumber(x, y, amount, options = {}) {
 
 
 function addFloatingText(x, y, text, color, options = {}) {
+    if (_effectsSuppressed()) return;
     const { style = 'text', offsetY = 0, icon = '' } = options;
     const { px, py } = _effectCoords(x, y, offsetY);
     const life = style === 'crit-banner' ? 48 : style === 'xp' ? 50 : style === 'death-caption' ? 44 : 42;
@@ -3633,6 +3662,7 @@ const DEATH_CAPTIONS = {
 
 
 function spawnDeathAnim(enemy) {
+    if (_effectsSuppressed()) return;
     triggerHitStop(enemy.type === 'boss' ? 8 : 5);
     if (enemy.type === 'boss') triggerScreenFlash('kill');
     const cap = DEATH_CAPTIONS[enemy.type];
@@ -3729,6 +3759,7 @@ function drawDyingSprites() {
 
 
 function addBurst(x, y, color) {
+    if (_effectsSuppressed()) return;
     gameState.effects.push({ kind: 'burst', px: x * TILE_SIZE + TILE_SIZE / 2, py: y * TILE_SIZE + TILE_SIZE / 2, color, life: 18, maxLife: 18 });
 }
 
@@ -4460,9 +4491,9 @@ function drawMarketDetails() {
     drawHubNpc(gameState.trainer,    '#58c26d', 'TRAINER',   'trainer');
     drawHubNpc(gameState.bank,       '#ffd65a', 'BANK',      'bank');
     // South row vendors
-    drawHubNpc(gameState.blacksmith, '#c45c00', 'BLACKSMITH','blacksmith');
-    drawHubNpc(gameState.magicDealer,'#9c6dff', 'ARCANE',    'magicDealer');
-    if (gameState.loteriaCaller) drawHubNpc(gameState.loteriaCaller, '#ff5e8a', 'LOTERÍA', 'loteriaCaller');
+    drawHubNpc(gameState.blacksmith,    '#c45c00', 'BLACKSMITH', 'blacksmith');
+    drawHubNpc(gameState.magicDealer,   '#9c6dff', 'ARCANE',     'magicDealer');
+    drawHubNpc(gameState.loteriaCaller, '#ff9f58', 'LOTER\u00cdA', 'gambler');
     drawNoticeBoard();
     // Market sign at the top center
     const mx = 12 * TILE_SIZE + TILE_SIZE / 2;
