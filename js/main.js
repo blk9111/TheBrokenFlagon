@@ -97,6 +97,13 @@ function initGame(className, subclassId = null, characterName = '', seedOverride
     document.getElementById('game-ui').style.display = 'grid';
     document.getElementById('game-over').style.display = 'none';
     document.body.classList.add('in-run');
+    // The canvas lived inside a hidden (display:none) game-ui until just now, so
+    // its backing store may have been sized against a 0×0 layout — which renders
+    // as huge, blurry, oversized tiles. Force a clean re-fit now that the real
+    // layout exists. rAF lets the browser settle the grid layout first.
+    if (typeof invalidateCanvasSize === 'function') {
+        requestAnimationFrame(() => { try { invalidateCanvasSize(); } catch (_) {} });
+    }
 
     gameState.trainerBought = { hp: false, atk: false };
 

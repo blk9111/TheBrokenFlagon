@@ -241,19 +241,19 @@ function _renderLoteriaTablas() {
             cell.className = 'loteria-cell' +
                 (isMarked ? ' loteria-cell-marked' : '') +
                 (isLive ? ' loteria-cell-live' : '');
-            // Prefer real card art at sprites/loteria/<id>.png. The art is a
-            // FULL card (border + name baked in), so when it loads we hide the
-            // glyph/name fallback via the .loteria-cell-hasart class. If the
-            // file is missing, the <img> onerror removes the image and clears
-            // that class, revealing the glyph+name fallback — so the game works
-            // today with glyphs and upgrades automatically as art is dropped in.
+            // Card art at sprites/loteria/<id>.png is OPTIONAL. Default to the
+            // glyph+name fallback (so the board always renders correctly with no
+            // art files present). Only when an image actually LOADS do we add
+            // .loteria-cell-hasart, which hides the glyph and shows the art. This
+            // is the robust direction: a missing file simply never triggers
+            // onload, so the glyph stays — no dependency on onerror firing.
             const artSrc = `sprites/loteria/${cardId}.png`;
-            cell.classList.add('loteria-cell-hasart');
             cell.innerHTML =
-                `<img class="loteria-cell-art" src="${artSrc}" alt="${card.name}" draggable="false"` +
-                ` onerror="this.remove(); this.closest('.loteria-cell').classList.remove('loteria-cell-hasart');">` +
                 `<span class="loteria-cell-glyph">${card.glyph}</span>` +
                 `<span class="loteria-cell-name">${card.name}</span>` +
+                `<img class="loteria-cell-art" src="${artSrc}" alt="" draggable="false"` +
+                ` onload="this.closest('.loteria-cell').classList.add('loteria-cell-hasart');"` +
+                ` onerror="this.remove();">` +
                 (isMarked ? '<span class="loteria-bean" aria-hidden="true">&#128997;</span>' : '');
             cell.onclick = () => _loteriaCellClick(t, c);
             board.appendChild(cell);

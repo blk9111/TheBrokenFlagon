@@ -1,6 +1,6 @@
 {
   "name": "the-broken-flagon",
-  "version": "1.13.0",
+  "version": "1.16.0",
   "description": "The Broken Flagon — a tavern-hub dungeon crawler RPG",
   "author": "Brian",
   "main": "electron-main.js",

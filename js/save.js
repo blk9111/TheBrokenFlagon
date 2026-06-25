@@ -523,6 +523,11 @@ function loadActiveRun() {
         document.getElementById('game-ui').style.display = 'grid';
         document.getElementById('game-over').style.display = 'none';
         document.body.classList.add('in-run');
+        // Re-fit the canvas now the game-ui is visible (it was display:none until
+        // now). Prevents the oversized "huge blurry tiles" mis-scale on resume.
+        if (typeof invalidateCanvasSize === 'function') {
+            requestAnimationFrame(() => { try { invalidateCanvasSize(); } catch (_) {} });
+        }
 
         if (!gameState.frameStarted) {
             gameState.frameStarted = true;
@@ -640,16 +645,37 @@ function _updateTitleWelcomeGoals() {
     const goals = (typeof getNextGoals === 'function') ? getNextGoals() : [];
     if (!goals.length) { card.style.display = 'none'; return; }
 
+    const safe = (typeof safeColor === 'function') ? safeColor : (c) => c;
+    const esc  = (typeof escHtml === 'function') ? escHtml : (s) => s;
+
     const list = document.getElementById('twg-list');
     if (list) {
-        const safe = (typeof safeColor === 'function') ? safeColor : (c) => c;
-        const esc  = (typeof escHtml === 'function') ? escHtml : (s) => s;
         list.innerHTML = goals.map(g =>
             `<div class="twg-goal">` +
             `<span class="twg-goal-icon" style="color:${safe(g.color)}">${g.icon}</span>` +
             `<span class="twg-goal-text">${esc(g.label)}</span></div>`
         ).join('');
     }
+
+    // Daily streak badge — shown only when a streak is actually alive (>=2 days,
+    // so a single day doesn't trumpet a "1-day streak"). Sits above the goals as
+    // a reason to keep the chain going. Reads the live streak from dailyRecords.
+    const streakEl = document.getElementById('twg-streak');
+    if (streakEl) {
+        const streak = (typeof getDailyStreak === 'function') ? getDailyStreak() : 0;
+        if (streak >= 2) {
+            const best = (typeof getBestDailyStreak === 'function') ? getBestDailyStreak() : 0;
+            const bestNote = (best > streak) ? ` · best ${best}` : (streak === best && best >= 3 ? ' · your best!' : '');
+            streakEl.innerHTML =
+                `<span class="twg-streak-flame" aria-hidden="true">&#128293;</span>` +
+                `<span class="twg-streak-num">${streak}-day Daily streak</span>` +
+                `<span class="twg-streak-best">${esc(bestNote)}</span>`;
+            streakEl.style.display = 'flex';
+        } else {
+            streakEl.style.display = 'none';
+        }
+    }
+
     card.style.display = 'block';
 }
 
@@ -720,6 +746,11 @@ function loadMetaProgress() {
                     gameMeta.pitFame    = _pitFame;
                     gameMeta.pitWins    = _pitWins;
                     gameMeta.pitBouts   = _pitBouts;
+                    // Per-opponent win counts (anti-farm renown cap). Default {}
+                    // when absent from older saves.
+                    gameMeta.pitRenownCounts = (meta.meta.pitRenownCounts &&
+                                                typeof meta.meta.pitRenownCounts === 'object')
+                                               ? { ...meta.meta.pitRenownCounts } : {};
                     // ── new Hybrid fields (default 0/{} when absent from old saves) ──────────
                     gameMeta.flagonCoins   = num(meta.meta.flagonCoins, 0);
                     gameMeta.treasurySpent = (meta.meta.treasurySpent &&
@@ -727,12 +758,14 @@ function loadMetaProgress() {
                                           ? { ...meta.meta.treasurySpent } : {};
                     if (meta.meta.hintsSeen) gameMeta.hintsSeen = { ...meta.meta.hintsSeen };
                     if (meta.meta.dailyRecords) gameMeta.dailyRecords = { ...meta.meta.dailyRecords };
+                    if (meta.meta.bestDailyStreak != null) gameMeta.bestDailyStreak = meta.meta.bestDailyStreak;
                     if (meta.meta.bestiary) gameMeta.bestiary = { ...meta.meta.bestiary };
                     if (meta.meta.casinoJackpot != null) gameMeta.casinoJackpot = meta.meta.casinoJackpot;
                     if (meta.meta.casinoJackpotLastClaimed != null) gameMeta.casinoJackpotLastClaimed = meta.meta.casinoJackpotLastClaimed;
                     if (meta.meta.casinoJackpotLastBumped != null) gameMeta.casinoJackpotLastBumped = meta.meta.casinoJackpotLastBumped;
                     if (meta.meta.lottery != null) gameMeta.lottery = meta.meta.lottery;
                     gameMeta.lotteryGrandWon = !!meta.meta.lotteryGrandWon;
+                    if (meta.meta.loteriaWins != null) gameMeta.loteriaWins = meta.meta.loteriaWins;
                     if (meta.meta.casinoWheelSpins != null) gameMeta.casinoWheelSpins = meta.meta.casinoWheelSpins;
                     if (meta.meta.casinoWheelBigWins != null) gameMeta.casinoWheelBigWins = meta.meta.casinoWheelBigWins;
                     if (meta.meta.tavernRenown != null) gameMeta.tavernRenown = meta.meta.tavernRenown;

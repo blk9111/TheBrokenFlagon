@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.14.0';
+const GAME_VERSION = '1.15.0';
 
 const DUNGEON_NAME = 'The Dungeon of Ash';
 
@@ -157,6 +157,10 @@ function recordDailyResult(dateKey, floor, won, className, subclass) {
     }
     // Earn 2 Renown for participating in a daily, once per day
     if (!prev && typeof earnRenown === 'function') earnRenown(2, 'daily challenge');
+    // Refresh the best-ever streak record now that today is logged. (getDailyStreak
+    // reads dailyRecords, which we just updated, so this captures today.)
+    const cur = getDailyStreak();
+    if (cur > (gameMeta.bestDailyStreak || 0)) gameMeta.bestDailyStreak = cur;
     // Prune old records so the object can't grow unbounded over months of play.
     const keys = Object.keys(gameMeta.dailyRecords).sort();
     while (keys.length > 60) {
@@ -170,6 +174,44 @@ function recordDailyResult(dateKey, floor, won, className, subclass) {
 // drives a simple "streak/dedication" readout and a future achievement hook.
 function getDailyPlayCount() {
     return gameMeta.dailyRecords ? Object.keys(gameMeta.dailyRecords).length : 0;
+}
+
+// Current daily streak: how many consecutive UTC days — counting back from today
+// (or yesterday, so the streak is still "alive" until the day is missed) — the
+// player has a Daily Challenge record. Computed directly from dailyRecords so it
+// can never drift out of sync with what was actually played. No separate stored
+// counter to corrupt.
+//
+// Streak stays alive if they played today OR yesterday (today not yet done is a
+// pending day, not a broken streak). Returns 0 if neither.
+function getDailyStreak(today = getDailyKey()) {
+    const records = gameMeta.dailyRecords || {};
+    // Walk backwards from an anchor day, counting consecutive days with a record.
+    const dayMs = 86400000;
+    const todayDate = new Date(today + 'T00:00:00Z');
+
+    // Decide the anchor: if today is played, start counting at today; else if
+    // yesterday is played, start at yesterday (today is still pending); else 0.
+    const yesterdayKey = getDailyKey(new Date(todayDate.getTime() - dayMs));
+    let anchor;
+    if (records[today]) anchor = todayDate;
+    else if (records[yesterdayKey]) anchor = new Date(todayDate.getTime() - dayMs);
+    else return 0;
+
+    let streak = 0;
+    let cursor = anchor;
+    while (records[getDailyKey(cursor)]) {
+        streak++;
+        cursor = new Date(cursor.getTime() - dayMs);
+    }
+    return streak;
+}
+
+// The player's best (longest) daily streak ever reached. Persisted in gameMeta
+// so a broken current streak doesn't erase the personal record. Updated whenever
+// a daily is recorded (see recordDailyResult).
+function getBestDailyStreak() {
+    return gameMeta.bestDailyStreak || 0;
 }
 
 
@@ -961,6 +1003,11 @@ let gameMeta = {
     pitFame: 0,
     pitBouts: 0,
     pitWins: 0,
+    // Per-opponent win counts for the arena. The renown reward is capped at the
+    // first 3 wins vs each foe (anti-farming, see arena.js). MUST persist or the
+    // cap resets every launch and renown can be farmed by relaunching. Declared
+    // here AND restored in loadMetaProgress (save.js).
+    pitRenownCounts: {},
     // Hybrid meta-progression (Phase 3+)
     // flagonCoins: permanent power currency, never lost on death.
     // treasurySpent: { upgradeId: true } — which Treasury nodes are bought.
@@ -979,6 +1026,10 @@ let gameMeta = {
     // killedBy, ts }. Capped at 8 so it never grows unbounded.
     fallen: [],
     dailyRecords: {},
+    // Best (longest) daily-challenge streak ever reached. Current streak is
+    // derived live from dailyRecords (see getDailyStreak); only the best is
+    // stored. MUST be restored in loadMetaProgress or it resets each launch.
+    bestDailyStreak: 0,
     casinoJackpot: 50,
     casinoJackpotLastClaimed: null,
     casinoWheelSpins: 0,
@@ -987,6 +1038,10 @@ let gameMeta = {
     // wait survives across sessions — the whole point of the mechanic.
     lottery: null,
     lotteryGrandWon: false,
+    // Lifetime La Lotería wins. Written in loteria-ui.js on each win; must be
+    // declared here AND restored in loadMetaProgress (save.js) or it silently
+    // resets every launch — the loader reads gameMeta field-by-field.
+    loteriaWins: 0,
     stats: {
         totalKills: 0,
         slimeKills: 0,
@@ -2505,6 +2560,13 @@ const STATUS_META = {
 // Entries are short, player-facing summaries; the manual's Version History
 // section carries the fuller writeup. Most recent first.
 const CHANGELOG = [
+    {
+        version: '1.15.0',
+        highlights: [
+            'Daily streaks. Play the Daily Challenge on consecutive days and your streak grows — the title screen greets you back with your running count and your longest streak ever. Miss a day and it resets, so keep the chain alive.',
+        ],
+        note: 'Keep the chain alive.',
+    },
     {
         version: '1.14.0',
         highlights: [

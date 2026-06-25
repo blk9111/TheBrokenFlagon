@@ -2,7 +2,7 @@
 
 *A Dungeon Adventure*
 
-Version 1.13.0 · *"Many descend. Few return."*
+Version 1.15.0 · *"Many descend. Few return."*
 
 ---
 

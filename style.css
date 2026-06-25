@@ -14313,6 +14313,10 @@ div[id$="-inner"]::before {
     border-radius: 7px;
     pointer-events: none;
     user-select: none;
+    display: none;            /* hidden until the image actually loads */
+}
+.loteria-cell-hasart .loteria-cell-art {
+    display: block;          /* revealed once onload added .loteria-cell-hasart */
 }
 .loteria-cell-hasart .loteria-cell-glyph,
 .loteria-cell-hasart .loteria-cell-name {
@@ -14367,3 +14371,32 @@ div[id$="-inner"]::before {
     margin-top: 1px;
 }
 .twg-goal-text { color: #e8ddc8; }
+
+/* ── Daily streak badge (welcome-back card) ──
+   A warm ember accent above the goals; only shown when a streak is alive. */
+#twg-streak {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    margin: 2px 0 11px;
+    padding: 7px 11px;
+    background: linear-gradient(90deg, rgba(255, 120, 40, 0.14), rgba(255, 120, 40, 0.03));
+    border: 1px solid rgba(255, 140, 60, 0.35);
+    border-radius: 7px;
+}
+.twg-streak-flame {
+    font-size: 15px;
+    line-height: 1;
+    filter: saturate(1.1);
+}
+.twg-streak-num {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffb070;
+    letter-spacing: 0.01em;
+}
+.twg-streak-best {
+    font-size: 11px;
+    color: rgba(255, 176, 112, 0.6);
+    font-style: italic;
+}

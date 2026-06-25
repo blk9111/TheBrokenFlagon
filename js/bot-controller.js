@@ -15,9 +15,11 @@
 
 // ── Version & changelog ───────────────────────────────────────────────────
 // Newest first. Keep entries terse — one line, what changed and why.
-const BOT_VERSION = '2.4.2';
+const BOT_VERSION = '2.6.0';
 const BOT_BUILD_DATE = '2026-06-25';
 const BOT_CHANGELOG = [
+    ['2.6.0', 'Smarter play: proactive descend — the bot now heads for the stairs the moment a floor is clear of reachable enemies, instead of loitering until the grind-escape valve fires at 30% of the floor budget. Likely cuts the timeout rate substantially'],
+    ['2.5.0', 'Descend-failure diagnostics at the floor watchdog (exit found/reached/standing-on). Per-floor profiler (time, damage, gold, abilities per floor) attached to each run. 📊 Export Analytics — download all runs as structured JSON including per-floor profiles for offline regression analysis'],
     ['2.4.2', 'Fix mis-scaled "huge blurry tiles" canvas after returning to Full display — force a clean backing-store re-fit when the canvas stage is shown again'],
     ['2.4.1', 'Minimap/Headless display now hides the whole canvas stage, not just the canvas — fixes the empty dark "big map" area that remained behind the dashboard'],
     ['2.4.0', 'Crash-proof run persistence (localStorage, survives reload/crash); 💾 Download CSV; loop-batch mode for overnight runs'],
@@ -159,6 +161,11 @@ function recordRunResult(p, floor, outcome) {
         dmgEfficiency: (p.runStats?.damageTaken > 0)
             ? +((p.runStats.damageDelt||0) / p.runStats.damageTaken).toFixed(1) : 0,
     };
+    // Close out the final floor and attach the per-floor profile, then reset
+    // the accumulator for the next run.
+    try { _closeFloorProfile(floor); } catch (_) {}
+    rec.floorProfiles = _currentRunFloorProfiles.slice();
+    _currentRunFloorProfiles = [];
     runRecords.push(rec);
     _persistRun(rec); // crash-proof: flush this run to localStorage immediately
     batch.startKills = stats.kills;
@@ -363,6 +370,34 @@ let _floorEnterMs = Date.now();
 let goalText     = 'Idle';
 let _logFilter   = 'all'; // active log filter: 'all'|'floor'|'death'|'warn'|'error'
 
+// ── Per-floor profiler state ──────────────────────────────────────────────
+// Accumulates metrics for the CURRENT floor; _closeFloorProfile snapshots them
+// into _currentRunFloorProfiles, which is attached to the run record on finish.
+let _floorProfileStart    = Date.now(); // wall-clock when this floor began
+let _floorProfileDmgBase  = 0;          // player.damageTaken at floor start
+let _floorProfileGoldBase = 0;          // stats.gold at floor start
+let _floorProfileAbilities = 0;         // abilities used on this floor (incremented at use sites)
+let _currentRunFloorProfiles = [];      // [{floor, ms, dmgTaken, goldLooted, abilities}] for the active run
+
+// Snapshot the floor we're leaving into the run's profile array. Called on every
+// floor change and at run end. `floor` is the floor number being closed out.
+function _closeFloorProfile(floor) {
+    if (floor == null || floor < 0) return;
+    const now = Date.now();
+    const dmgNow  = (pp()?.runStats?.damageTaken) || 0;
+    const profile = {
+        floor,
+        ms:         now - _floorProfileStart,
+        dmgTaken:   Math.max(0, dmgNow - _floorProfileDmgBase),
+        goldLooted: Math.max(0, stats.gold - _floorProfileGoldBase),
+        abilities:  _floorProfileAbilities,
+    };
+    _currentRunFloorProfiles.push(profile);
+    // Cap so a pathological run can't grow this unbounded.
+    if (_currentRunFloorProfiles.length > 120) _currentRunFloorProfiles.shift();
+}
+
+
 // Per-class running averages — updated by recordRunResult, shown in dashboard
 const liveClassStats = {}; // cls → { runs, totalFloor, bestFloor, deaths, totalKills }
 const liveSubclassStats = {}; // subclassId → { name, cls, runs, totalFloor, bestFloor, deaths }
@@ -440,7 +475,7 @@ let _lastAbilityTick = -999;
 function _abilityOffCooldown() {
     return (_abilityTickClock - _lastAbilityTick) >= (CFG.abilityCooldownTicks || 0);
 }
-function _markAbilityUsed() { _lastAbilityTick = _abilityTickClock; }
+function _markAbilityUsed() { _lastAbilityTick = _abilityTickClock; _floorProfileAbilities++; }
 let _abilityBanned   = false;
 let _runTickCount    = 0;
 
@@ -1779,6 +1814,39 @@ function decideDungeon() {
         }
     }
 
+    // ── Proactive descend — leave the moment the floor is won ──────────────
+    // SMART-PLAY FIX: previously the bot only headed for the exit via the grind
+    // escape valve (after burning 30% of the floor budget) or once already
+    // stuck. So even a bot that cleared every enemy instantly would loiter,
+    // wandering until the valve fired — a major cause of timeouts. Here we
+    // decide to leave as soon as there are no reachable enemies left and we're
+    // not in immediate danger. bestTarget() already excludes walled-off enemies,
+    // so "no target" genuinely means the floor is clear (or the rest are
+    // unreachable, in which case leaving is still correct). We only commit once
+    // the floor is reasonably explored so we don't beeline past loot/items on
+    // arrival; the item-collection steps below still run before this on early
+    // ticks because _floorTickCount is low.
+    if (s.floor > 0 && adjacentEnemies === 0 && !bestTarget() &&
+        _floorTickCount > MAX_FLOOR_TICKS * 0.05) {
+        const exitNow = findTileAny(2);
+        if (exitNow) {
+            const onExitNow = (p.x === exitNow.x && p.y === exitNow.y);
+            if (onExitNow) {
+                goal(`Floor clear — descending (F${s.floor})`);
+                try { tryStairsInteraction?.(); } catch(e) { err('descend-clear', e); }
+                return;
+            }
+            goal(`Floor clear — heading to exit (F${s.floor})`);
+            if (navigate(exitNow.x, exitNow.y)) return;
+            // If we can't path to the exit yet, reveal once and let the normal
+            // flow continue — the grind valve and watchdog remain as backstops.
+            if (!_revealedWhileStuck && typeof revealAll === 'function') {
+                try { revealAll(); } catch(_) {}
+                _revealedWhileStuck = true;
+            }
+        }
+    }
+
     // ── 0. Intent-aware evasion — read enemy telegraphs and react ──
     // The intent system in combat.js already predicts what each enemy will do
     // next turn. The bot reads this and takes evasive action BEFORE the hit.
@@ -2281,6 +2349,17 @@ function decide() {
 
     // Floor changed
     if (s.floor !== lastFloor) {
+        // ── Per-floor profiler ────────────────────────────────────────────
+        // Close out the floor we're leaving (capture its elapsed time + the
+        // metrics accumulated while on it) and start a fresh profile for the
+        // new floor. Attached to the run record in recordRunResult so we can
+        // see exactly which floors are slow / damage spikes / gold-starved.
+        try { _closeFloorProfile(lastFloor); } catch (_) {}
+        _floorProfileStart = Date.now();
+        _floorProfileDmgBase = (pp()?.runStats?.damageTaken) || 0;
+        _floorProfileGoldBase = stats.gold;
+        _floorProfileAbilities = 0;
+
         lastFloor = s.floor;
         _floorEnterMs = Date.now(); // wall-clock watchdog: real progress resets it
         stuckTicks = 0;
@@ -2305,8 +2384,28 @@ function decide() {
     // if the portal isn't available within a short grace window.
     if (CFG.floorWatchdogMs > 0 && s.floor > 0 && (Date.now() - _floorEnterMs) > CFG.floorWatchdogMs) {
         const secs = Math.round((Date.now() - _floorEnterMs) / 1000);
+        // ── Descend-failure diagnostic ────────────────────────────────────
+        // 92% of bot runs end here. Capture WHY: is the exit tile findable, is
+        // the bot standing on it (interaction failing) or unable to reach it
+        // (pathing failing), and how many enemies remain? This single log tells
+        // us which failure mode it is so the fix is targeted, not guessed.
+        let diag = 'no-diag';
+        try {
+            const exitT = findTileAny(2);
+            const pTileNow = s.dungeon?.[p.y]?.[p.x];
+            const aliveEnemies = (s.enemies || []).filter(e => e.hp > 0).length;
+            const revealedExit = exitT ? !!s.revealed?.[exitT.y]?.[exitT.x] : false;
+            if (!exitT) {
+                diag = 'EXIT-NOT-FOUND (no tile==2 on map)';
+            } else {
+                const onExit = (p.x === exitT.x && p.y === exitT.y);
+                const dist = Math.abs(exitT.x - p.x) + Math.abs(exitT.y - p.y);
+                diag = `exit@(${exitT.x},${exitT.y}) revealed=${revealedExit} | bot@(${p.x},${p.y}) pTile=${pTileNow} onExit=${onExit} distToExit=${dist} | aliveEnemies=${aliveEnemies} | escapeValveFired=${_floorTickCount > MAX_FLOOR_TICKS * 0.30}`;
+            }
+        } catch (e) { diag = 'diag-error: ' + e.message; }
         log(`Watchdog: ${secs}s real time on F${s.floor} with no progress — extracting`, 'warn');
-        err('floor-watchdog', new Error(`Floor ${s.floor} watchdog fired after ${secs}s of real time — stuck (no floor change)`));
+        log(`  ↳ DESCEND DIAG: ${diag}`, 'warn');
+        err('floor-watchdog', new Error(`Floor ${s.floor} watchdog fired after ${secs}s of real time — stuck (no floor change) [${diag}]`));
         // Reset the timers so we don't immediately re-fire, and record the run.
         _floorEnterMs = Date.now();
         _runTickCount = 0; _floorTickCount = 0; _abilityBanned = false;
@@ -2912,6 +3011,7 @@ function buildPanel() {
   <button class="bc" onclick="_bot.report()" title="Full report">📊</button>
   <button class="bc" onclick="_bot.exportCSV()" title="Copy all persisted runs as CSV">📄</button>
   <button class="bc" onclick="_bot.downloadCSV()" title="Download all persisted runs as a .csv file (safest overnight capture)">💾</button>
+  <button class="bc" onclick="_bot.downloadJSON()" title="Export Analytics — download all runs as structured JSON (includes per-floor profiles) for offline regression analysis">📊</button>
   <button class="bc" onclick="_bot.min()" style="color:#3a2a18;padding:4px 8px" title="Minimise">−</button>
 </div>
 
@@ -4105,6 +4205,29 @@ window._bot = {
             setTimeout(() => URL.revokeObjectURL(url), 1000);
             log(`Downloaded ${_persistedRuns.length} runs as CSV`,'run');
         } catch(e) { err('downloadCSV', e); log('Download failed — use Copy CSV instead','warn'); }
+    },
+    // Export all persisted runs as a structured JSON blob — richer than CSV
+    // because it preserves nested data (per-floor profiles) that flat CSV can't.
+    // Use for offline regression analysis of class win-rates, floor balance, etc.
+    downloadJSON() {
+        try {
+            const payload = {
+                exportedAt: new Date().toISOString(),
+                botVersion: BOT_VERSION,
+                runCount: _persistedRuns.length,
+                runs: _persistedRuns,
+            };
+            const json = JSON.stringify(payload, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+            a.href = url; a.download = `flagon-bot-analytics-${stamp}.json`;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            log(`Exported ${_persistedRuns.length} runs as JSON`,'run');
+        } catch(e) { err('downloadJSON', e); log('JSON export failed','warn'); }
     },
     // How many runs are safely persisted to disk right now.
     persistedCount() {
