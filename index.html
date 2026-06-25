@@ -26,6 +26,61 @@
             </div>
         </div>
 
+        <!-- ── Manuals chooser ──────────────────────────────────────────
+             Opens the standalone documentation pages. Each link opens in a
+             new tab so the game state is never lost. Self-contained styling
+             (amber theme) so it needs no additions to style.css. -->
+        <div id="manuals-panel" style="display:none; position:fixed; inset:0; z-index:9000;
+             background:rgba(6,5,3,0.82); backdrop-filter:blur(3px);
+             align-items:center; justify-content:center;"
+             role="dialog" aria-modal="true" aria-label="Manuals and documentation"
+             onclick="if(event.target===this)closeManuals()">
+            <div style="width:min(540px,92vw); max-height:88vh; overflow:auto;
+                 background:linear-gradient(180deg,#15110d,#0e0b08);
+                 border:1px solid rgba(200,146,42,0.35); border-radius:10px;
+                 box-shadow:0 24px 80px rgba(0,0,0,0.7), 0 0 60px rgba(200,146,42,0.12);
+                 padding:26px 26px 22px; font-family:'Cinzel',Georgia,serif; color:#e8ddcb;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <h2 style="margin:0; font-size:22px; color:#f0c462; letter-spacing:0.03em;">
+                        <span style="opacity:0.8">&#128214;</span> Manuals &amp; Records</h2>
+                    <button onclick="closeManuals()" aria-label="Close manuals"
+                        style="background:#1d1812; border:1px solid rgba(200,146,42,0.3);
+                        color:#e8ddcb; border-radius:6px; padding:6px 12px; cursor:pointer;
+                        font-family:inherit; font-size:13px;">&#x2715; Close</button>
+                </div>
+                <p style="margin:0 0 18px; font-family:Georgia,serif; font-size:14px; color:#a89c86; font-style:italic;">
+                    Guides and the release record. Each opens in a new tab.</p>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <a class="manual-link" href="manual-player.html" target="_blank" rel="noopener"
+                       style="--mi:'&#9876;'">Adventurer's Manual
+                       <span>How to play — classes, controls, the dungeon, the Pit, Lotería</span></a>
+                    <a class="manual-link" href="manual-bot.html" target="_blank" rel="noopener">Bot Operator's Manual
+                       <span>Running the play-bot: batches, completion mode, data export</span></a>
+                    <a class="manual-link" href="audit.html" target="_blank" rel="noopener">Codebase Audit
+                       <span>Engineering survey — strengths, findings, test coverage</span></a>
+                    <a class="manual-link" href="roadmap.html" target="_blank" rel="noopener">Roadmap
+                       <span>What's next, planned, and aspirational</span></a>
+                    <a class="manual-link" href="baseline.html" target="_blank" rel="noopener">Release Baseline 2.1.0
+                       <span>Sealed file manifest with checksums</span></a>
+                </div>
+            </div>
+        </div>
+        <style>
+            .manual-link {
+                display:block; text-decoration:none; color:#f0c462;
+                background:#13100b; border:1px solid rgba(200,146,42,0.18);
+                border-left:3px solid #c8922a; border-radius:0 7px 7px 0;
+                padding:13px 16px; font-family:'Cinzel',Georgia,serif; font-size:16px;
+                transition:background 0.15s, border-color 0.15s, transform 0.1s;
+            }
+            .manual-link span {
+                display:block; margin-top:3px; font-family:Georgia,serif; font-size:12.5px;
+                font-weight:normal; color:#9b9180; font-style:normal; letter-spacing:0;
+            }
+            .manual-link:hover { background:#1d1812; border-color:rgba(200,146,42,0.4); transform:translateX(2px); }
+            .manual-link:focus-visible { outline:2px solid #f0c462; outline-offset:2px; }
+        </style>
+
         <div id="title-screen">
             <div id="title-bg" aria-hidden="true">
                 <canvas id="title-particles-canvas" aria-hidden="true"></canvas>
@@ -355,9 +410,12 @@
                         <button class="rh-toggle-btn rh-lb-btn" onclick="if(typeof openLeaderboard==='function')openLeaderboard()">&#127942; Leaderboard</button>
                         <button class="rh-toggle-btn" onclick="toggleSaveSlots()">&#128190; Save Slots</button>
                         <button class="rh-toggle-btn" onclick="if(typeof openTreasury==='function')openTreasury()">&#9672; Treasury</button>
+                        <button class="rh-toggle-btn" onclick="if(typeof openManuals==='function')openManuals()">&#128214; Manuals</button>
+                        <button class="rh-toggle-btn" onclick="if(typeof toggleManuals==='function')toggleManuals()">&#128214; Manuals</button>
                     </div>
                     <div id="run-history-panel" style="display:none;"></div>
                     <div id="save-slots-panel" style="display:none;"></div>
+                    <div id="manuals-panel" style="display:none;"></div>
                 </div>
             </div>
         </div>
@@ -1474,6 +1532,10 @@
     <script src="js/tavern.js"></script>
     <script src="js/arena.js"></script>
     <script src="js/render.js"></script>
+    <script src="js/render-tiles.js"></script>
+    <script src="js/render-tavern.js"></script>
+    <script src="js/render-entities.js"></script>
+    <script src="js/render-world.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/save.js"></script>
     <script src="js/main.js"></script>

@@ -1,11 +1,11 @@
 {
   "meta": {
-    "release": "2.1.1",
-    "baselineId": "2026-06-25-resealed",
+    "release": "2.1.2",
+    "baselineId": "2026-06-25-renderer-split",
     "date": "2026-06-25",
-    "totalFiles": 34,
-    "totalBytes": 2142713,
-    "totalLines": 50753,
+    "totalFiles": 38,
+    "totalBytes": 2148892,
+    "totalLines": 50780,
     "botVersion": "2.10.0",
     "gameVersion": "2.1.0"
   },
@@ -89,10 +89,10 @@
     },
     {
       "file": "js/render.js",
-      "role": "Canvas rendering & effects",
-      "bytes": 195267,
-      "lines": 4642,
-      "sha256": "4c7d1ef72707b654091b1ee02d5730792fb9ec923df7b9f40f57f35a7df24e4f"
+      "role": "Core coordinator, camera, draw loop",
+      "bytes": 22250,
+      "lines": 467,
+      "sha256": "9f33a693f8c6bf4c3af8cc4e697c8f996fb5cafb580c56cc55c82c2a0ba38714"
     },
     {
       "file": "js/save.js",
@@ -247,6 +247,34 @@
       "bytes": 11579,
       "lines": 171,
       "sha256": "c6e027680fe4f174b4dfa8312ef54d9cad55cfff498cc1a70759d88577d906d4"
+    },
+    {
+      "file": "js/render-tiles.js",
+      "role": "Tile textures, dungeon map drawing, lighting, fog",
+      "bytes": 50419,
+      "lines": 1104,
+      "sha256": "75f9a933a46294f93a5f058d3a6e68da49b07d0d38268b0059e88aa7ddc7d8c8"
+    },
+    {
+      "file": "js/render-tavern.js",
+      "role": "Tavern interior scene drawing",
+      "bytes": 51963,
+      "lines": 1242,
+      "sha256": "8304db2e21f8eb28a1a62e9341509d165326b6061dfebcc82a760f65aa6b3efb"
+    },
+    {
+      "file": "js/render-entities.js",
+      "role": "Player, enemies, items, effects system",
+      "bytes": 54353,
+      "lines": 1264,
+      "sha256": "d8f8cdeb35733fb760bd59b0b5540982e1899855bd03c6985a032a08a8f7926d"
+    },
+    {
+      "file": "js/render-world.js",
+      "role": "Market, town, arena outworld scene drawing",
+      "bytes": 22461,
+      "lines": 592,
+      "sha256": "2829e0c6e892c0f2c758df7d6057a35cd055f9c28cbf9847b1fa5e977a3d77b9"
     }
   ]
 }

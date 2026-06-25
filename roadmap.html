@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Broken Flagon — Roadmap</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════════════
+     ROADMAP
+     Design family: the tome palette, but organized as a descent — the
+     game's own central metaphor. Horizons are "depths": Next (the floor
+     below you, certain), Soon (deeper, planned), Someday (the bottom you
+     climb toward). The signature device is the descent spine: a vertical
+     rail that literally goes down the page, each horizon a landing on it.
+     Honest about effort and grounded in the audit's findings.
+     ═══════════════════════════════════════════════════════════════════ */
+  :root{
+    --amber:#c8922a; --amber-lit:#f0c462;
+    --near:#58c26d; --soon:#62b9ff; --far:#b06fff;
+    --ink:#e4dac8; --ink-dim:#9b9180; --ink-faint:#655d4d;
+    --bg:#0a0806; --bg-panel:#13100b; --bg-raise:#1b150e;
+    --line:rgba(200,146,42,0.18); --line-soft:rgba(228,218,200,0.07);
+    --mono:'SFMono-Regular','Consolas',monospace;
+    --display:'Cinzel',Georgia,serif;
+    --body:'Iowan Old Style','Palatino Linotype',Georgia,serif;
+  }
+  *{box-sizing:border-box;} html{scroll-behavior:smooth;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:880px;margin:0 auto;padding:0 26px 120px;}
+
+  header.top{padding:64px 0 30px;text-align:center;border-bottom:1px solid var(--line);}
+  .eyebrow{font-family:var(--display);font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:var(--amber);margin-bottom:14px;}
+  h1{font-family:var(--display);font-size:clamp(34px,6vw,58px);font-weight:900;margin:0;line-height:1.0;
+     background:linear-gradient(175deg,#fff,#f0c462 130%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .sub{color:var(--ink-dim);font-size:17px;margin-top:14px;font-style:italic;}
+  .legend{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:26px;font-family:var(--mono);font-size:12px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;color:var(--ink-dim);}
+  .legend .dot{width:9px;height:9px;border-radius:50%;}
+
+  /* the descent spine */
+  .descent{position:relative;margin-top:48px;padding-left:54px;}
+  .descent::before{content:'';position:absolute;left:19px;top:8px;bottom:40px;width:2px;
+    background:linear-gradient(var(--near),var(--soon) 45%,var(--far) 80%,transparent);}
+
+  .horizon{position:relative;margin-bottom:54px;}
+  .horizon::before{content:'';position:absolute;left:-43px;top:4px;width:18px;height:18px;border-radius:50%;
+    background:var(--bg);border:3px solid var(--hz,var(--amber));box-shadow:0 0 0 4px var(--bg),0 0 16px var(--hz,var(--amber));}
+  .horizon.near{--hz:var(--near);} .horizon.soon{--hz:var(--soon);} .horizon.far{--hz:var(--far);}
+  .hz-label{font-family:var(--display);font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:var(--hz,var(--amber));margin-bottom:2px;}
+  .hz-title{font-family:var(--display);font-size:clamp(22px,3.6vw,30px);font-weight:800;margin:0 0 4px;color:var(--ink);}
+  .hz-blurb{color:var(--ink-dim);font-size:15px;margin:0 0 20px;max-width:60ch;}
+
+  .item{background:var(--bg-panel);border:1px solid var(--line-soft);border-left:2px solid var(--hz,var(--amber));
+    border-radius:0 6px 6px 0;padding:15px 18px;margin:10px 0;}
+  .item .ihead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px;}
+  .item h4{font-family:var(--display);font-size:17px;margin:0;color:var(--ink);}
+  .effort{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-faint);border:1px solid var(--line-soft);padding:2px 8px;border-radius:3px;margin-left:auto;}
+  .item p{margin:4px 0 0;font-size:14px;color:var(--ink-dim);line-height:1.55;}
+  .item .why{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin-top:8px;}
+  .item .why b{color:var(--amber);}
+  strong{color:var(--amber-lit);} code{font-family:var(--mono);font-size:0.88em;color:var(--amber-lit);background:var(--bg-raise);padding:1px 5px;border-radius:3px;}
+
+  .note{background:linear-gradient(90deg,rgba(200,146,42,0.05),transparent 85%);border:1px solid var(--line-soft);border-left:2px solid var(--amber);padding:14px 16px;margin:30px 0 0;border-radius:0 4px 4px 0;font-size:14px;color:var(--ink-dim);}
+  .note .lbl{color:var(--amber);font-family:var(--display);font-size:11px;letter-spacing:0.16em;text-transform:uppercase;display:block;margin-bottom:4px;}
+
+  footer{margin-top:64px;padding-top:28px;border-top:1px solid var(--line);text-align:center;color:var(--ink-faint);font-size:12px;font-family:var(--mono);letter-spacing:0.05em;}
+
+  @media (max-width:600px){.wrap{padding:0 16px 80px;}.descent{padding-left:40px;}.descent::before{left:13px;}.horizon::before{left:-35px;}}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="eyebrow">The Broken Flagon</div>
+    <h1>Roadmap</h1>
+    <p class="sub">Where the cellar goes from here — a plan that descends in order of certainty.</p>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--near)"></span> Next · committed</span>
+      <span><span class="dot" style="background:var(--soon)"></span> Soon · planned</span>
+      <span><span class="dot" style="background:var(--far)"></span> Someday · aspirational</span>
+    </div>
+  </header>
+
+  <div class="descent">
+
+    <!-- ── NEAR ── -->
+    <div class="horizon near">
+      <div class="hz-label">Next · the floor below</div>
+      <h2 class="hz-title">Finish what's started</h2>
+      <p class="hz-blurb">Small, high-certainty work that closes gaps the audit found — systems whose logic exists but whose UI or wiring hasn't caught up.</p>
+
+      <div class="item">
+        <div class="ihead"><h4>Build the Lotería UI</h4><span class="effort">Medium</span></div>
+        <p>The engine is done and tested; it needs a front end. Render the tabla(s), animate the caller, and wire click-to-mark. Either set the engine's <code>markableUntil</code> window during the build, or extend the engine to own the timing so the skill rule is consistent.</p>
+        <p class="why"><b>Why now:</b> a finished engine with no UI is a feature players can't reach.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>Wire the missing telemetry</h4><span class="effort">Small</span></div>
+        <p>Populate <code>bossesKilled</code>, <code>potionsUsed</code>, and damage-efficiency so balance analytics stop reading zero. Cheap to fix, unblocks every future tuning decision.</p>
+        <p class="why"><b>Why now:</b> the next balance pass is blind without it.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>Unit-test the new logic</h4><span class="effort">Small</span></div>
+        <p>Add assertions for the Lotería any-line win and payout floor, and for the arena rivals data contract now that it's wired. Both are pure logic — ideal, fast tests.</p>
+        <p class="why"><b>Why now:</b> lock in this session's fixes before they can regress.</p>
+      </div>
+    </div>
+
+    <!-- ── SOON ── -->
+    <div class="horizon soon">
+      <div class="hz-label">Soon · deeper down</div>
+      <h2 class="hz-title">Strengthen the foundations</h2>
+      <p class="hz-blurb">Planned work that pays off over time — balance, maintainability, and proving the 100-floor climb is real.</p>
+
+      <div class="item">
+        <div class="ihead"><h4>Resolve the floor-100 completability question</h4><span class="effort">Medium</span></div>
+        <p>Run completion mode to a definitive answer: does a legitimate clear happen, and if not, where's the wall? Turn the result into a balance change or an assertion-backed proof, not just a bot anecdote.</p>
+        <p class="why"><b>Why:</b> "a human can finish" should be a fact, not a hope.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>Investigate the lagging specialization</h4><span class="effort">Small</span></div>
+        <p>Focused batches on Twilight Domain (<code>_bot.toggleCls</code>) to isolate whether it's under-tuned, mis-built, or mis-played by the bot — then tune or fix accordingly.</p>
+        <p class="why"><b>Why:</b> every build should feel viable at the floors it's meant for.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>Tame the CSS</h4><span class="effort">Medium</span></div>
+        <p>Gradually retire the ~197 <code>!important</code> flags by fixing specificity, and consolidate the color hexes behind the existing variables. Opens the door to a high-contrast or alternate theme later.</p>
+        <p class="why"><b>Why:</b> today it works; the cost is future flexibility.</p>
+      </div>
+    </div>
+
+    <!-- ── FAR ── -->
+    <div class="horizon far">
+      <div class="hz-label">Someday · the bottom</div>
+      <h2 class="hz-title">Grow the world</h2>
+      <p class="hz-blurb">Aspirational directions — bigger bets that depend on the foundations above being solid first. Not commitments; possibilities worth holding onto.</p>
+
+      <div class="item">
+        <div class="ihead"><h4>Split the renderer</h4><span class="effort">Large</span></div>
+        <p>When <code>render.js</code> next needs real work, break it along natural seams — world-draw, HUD, effects — and bring the pure-logic/tested discipline of the newer modules to the oldest, largest one.</p>
+        <p class="why"><b>Why someday:</b> high value, high risk — do it when there's a reason to be in there anyway.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>More content depth</h4><span class="effort">Large</span></div>
+        <p>New enemy archetypes for the deep floors, more Treasury upgrade branches, additional Pit seasons or champion rivalries, and Lotería card art to replace the unicode stand-ins.</p>
+        <p class="why"><b>Why someday:</b> content scales the game once the systems are locked.</p>
+      </div>
+      <div class="item">
+        <div class="ihead"><h4>Accessibility &amp; polish pass</h4><span class="effort">Medium</span></div>
+        <p>Screen-reader labels on icon buttons, dialog roles on overlays, a colorblind-friendly rarity palette, and the high-contrast theme the CSS cleanup unlocks.</p>
+        <p class="why"><b>Why someday:</b> broadens who can play, once the surface is stable.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <span class="lbl">How to read this</span>
+    Horizons are ordered by <em>certainty</em>, not just time. "Next" items are nearly committed and low-risk; "Soon" is planned but flexible; "Someday" is a holding pen for good ideas that need the foundations finished first. Effort tags (Small / Medium / Large) are honest estimates for a solo developer, not promises of dates.
+  </div>
+
+  <footer>
+    The Broken Flagon · Roadmap · grounded in this session's audit<br>
+    Plans are made to be revised. The descent only goes one way: down, and forward.
+  </footer>
+
+</div>
+</body>
+</html>
