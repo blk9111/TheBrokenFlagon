@@ -63,6 +63,7 @@
 <script src="js/ui.js"></script>
 <script src="js/save.js"></script>
 
+    <script src="js/loteria.js"></script>
 <script>
 // ── Minimal test framework ──────────────────────────────────────────────────
 const groups = [];
@@ -1378,6 +1379,142 @@ describe('Save migration: arenaFame → pitFame', () => {
         loadMetaProgress();
         eq(gameMeta.flagonCoins, 42, 'flagonCoins should round-trip');
         eq(gameMeta.treasurySpent.bankExpansion, true, 'treasurySpent should round-trip');
+    });
+});
+
+// ── Lotería engine — any-line win (Línea) ─────────────────────────────────────
+describe('Lotería — Línea any-line win', () => {
+    it('completing row 0 wins', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 42 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'linea');
+        round.status = 'playing';
+        [0,1,2,3].forEach(ci => { round.currentCardId = round.tablas[0].cards[ci]; loteriaMark(round, 0, ci); });
+        assert(loteriaCheckWin(round), 'row 0 should win');
+        eq(round.status, 'won');
+    });
+    it('completing main diagonal wins', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 7 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'linea');
+        round.status = 'playing';
+        [0,5,10,15].forEach(ci => { round.currentCardId = round.tablas[0].cards[ci]; loteriaMark(round, 0, ci); });
+        assert(loteriaCheckWin(round), 'main diagonal should win');
+    });
+    it('completing anti-diagonal wins', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 13 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'linea');
+        round.status = 'playing';
+        [3,6,9,12].forEach(ci => { round.currentCardId = round.tablas[0].cards[ci]; loteriaMark(round, 0, ci); });
+        assert(loteriaCheckWin(round), 'anti-diagonal should win');
+    });
+    it('three marks in a row do NOT win', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 1 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'linea');
+        round.status = 'playing';
+        [0,1,2].forEach(ci => { round.currentCardId = round.tablas[0].cards[ci]; loteriaMark(round, 0, ci); });
+        assert(!loteriaCheckWin(round), '3 in a row should not win');
+        eq(round.status, 'playing');
+    });
+    it('wrong card click is ignored by the engine', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 5 });
+        round.status = 'playing';
+        round.currentCardId = round.tablas[0].cards[0];
+        const placed = loteriaMark(round, 0, 1); // cell 1 has a different card
+        // loteriaMark returns false if cell card ≠ currentCardId
+        assert(!placed || round.tablas[0].cards[1] === round.tablas[0].cards[0],
+            'mismatched click should not mark');
+    });
+});
+
+// ── Lotería payout floor — a win never costs coins ─────────────────────────
+describe('Lotería payout floor', () => {
+    it('línea at relaxed pace returns at least the stake', () => {
+        const round = startLoteriaRound({ tablaCount: 1, paceId: 'relaxed', seed: 1 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'linea');
+        round.status = 'won';
+        const payout = computeLoteriaPayout(round);
+        assert(payout >= round.stake, `payout ${payout} < stake ${round.stake}`);
+    });
+    it('full board at fast pace pays more than stake', () => {
+        const round = startLoteriaRound({ tablaCount: 2, paceId: 'fast', seed: 1 });
+        round.pattern = LOTERIA_PATTERNS.find(p => p.id === 'full');
+        round.status = 'won';
+        const payout = computeLoteriaPayout(round);
+        assert(payout > round.stake, `payout ${payout} should exceed stake ${round.stake}`);
+    });
+    it('payout scales with tabla count', () => {
+        const r1 = startLoteriaRound({ tablaCount: 1, paceId: 'classic', seed: 1 });
+        const r4 = startLoteriaRound({ tablaCount: 4, paceId: 'classic', seed: 1 });
+        const pat = LOTERIA_PATTERNS.find(p => p.id === 'corners');
+        r1.pattern = r4.pattern = pat; r1.status = r4.status = 'won';
+        assert(computeLoteriaPayout(r4) > computeLoteriaPayout(r1), '4 tablas should pay more than 1');
+    });
+    it('all patterns at all paces pay ≥ stake', () => {
+        for (const pat of LOTERIA_PATTERNS) {
+            for (const pace of LOTERIA_PACES) {
+                const round = startLoteriaRound({ tablaCount: 1, paceId: pace.id, seed: 1 });
+                round.pattern = pat; round.status = 'won';
+                const payout = computeLoteriaPayout(round);
+                assert(payout >= round.stake, `${pat.id} @ ${pace.id}: payout ${payout} < stake ${round.stake}`);
+            }
+        }
+    });
+});
+
+// ── Arena rivals data contract ────────────────────────────────────────────────
+describe('Arena rivals data contract', () => {
+    it('getRival returns null for unknown champion', () => {
+        gameMeta.rivals = {};
+        eq(getRival('nobody'), null, 'unknown champion should be null');
+    });
+    it('first win creates record with wins=1 streak=1', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', true);
+        const r = getRival('iron_warden');
+        assert(r !== null); eq(r.wins, 1); eq(r.losses, 0); eq(r.streak, 1); eq(r.lastResult, 'win');
+    });
+    it('consecutive losses build negative streak', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', false);
+        recordRivalResult('iron_warden', false);
+        recordRivalResult('iron_warden', false);
+        const r = getRival('iron_warden');
+        eq(r.streak, -3); eq(r.losses, 3); eq(r.wins, 0);
+    });
+    it('rivalFlavor returns "Your nemesis" after 3 consecutive losses', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', false);
+        recordRivalResult('iron_warden', false);
+        recordRivalResult('iron_warden', false);
+        eq(rivalFlavor('iron_warden'), 'Your nemesis');
+    });
+    it('rivalFlavor returns "You dominate them" after 3 consecutive wins', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', true);
+        eq(rivalFlavor('iron_warden'), 'You dominate them');
+    });
+    it('rivalRecordStr formats wins-losses correctly', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', false);
+        eq(rivalRecordStr('iron_warden'), '(1-1)');
+    });
+    it('streak resets direction on result flip (win-win-loss → -1)', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', false);
+        eq(getRival('iron_warden').streak, -1, 'streak should flip to -1');
+    });
+    it('multiple champions tracked independently', () => {
+        gameMeta.rivals = {};
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('iron_warden', true);
+        recordRivalResult('shadow_blade', false);
+        eq(getRival('iron_warden').wins, 2);
+        eq(getRival('shadow_blade').losses, 1);
+        eq(getRival('iron_warden').streak, 2);
     });
 });
 

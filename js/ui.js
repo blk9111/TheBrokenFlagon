@@ -875,6 +875,11 @@ function showGameOver() {
     if (tryBerserkerDeathSave()) return;
     if (tryRelicLethalSave()) return;
     gameState.gameOver = true;
+    // Finalise run stats before any rendering reads them.
+    if (gameState.runStats) {
+        gameState.runStats.damageEfficiency =
+            +(gameState.runStats.damageDelt / Math.max(1, gameState.runStats.damageTaken)).toFixed(2);
+    }
     gameState.activeBrew = null;
     gameState.activeSong = null;
     _stopBardLoop();
@@ -1210,36 +1215,6 @@ function showFloorTransition(floor) {
         overlay.classList.add('ft-exit');
         setTimeout(() => overlay.remove(), 450);
     }, 1200);
-}
-
-
-// ── Region Banner (World Map B2) ──────────────────────────────────────────────
-// A larger, more dramatic overlay than the per-floor transition, shown only when
-// the player crosses into a new named region. Sits a touch longer so the region
-// name and flavor land. Non-blocking and self-dismissing.
-function showRegionBanner(region) {
-    if (!region) return;
-    const old = document.getElementById('region-banner');
-    if (old) old.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'region-banner';
-    overlay.style.setProperty('--region-color', region.color || '#ffd65a');
-    overlay.innerHTML = `
-        <div class="rb-content">
-            <div class="rb-eyebrow">Now Entering</div>
-            <div class="rb-name">${escHtml(region.name)}</div>
-            <div class="rb-flavor">${escHtml(region.flavor || '')}</div>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    void overlay.offsetWidth;
-    overlay.classList.add('rb-visible');
-
-    setTimeout(() => {
-        overlay.classList.add('rb-exit');
-        setTimeout(() => overlay.remove(), 600);
-    }, 2600);
 }
 
 
@@ -1595,7 +1570,6 @@ function getAbilityHint() {
     if (gameState.bardOpen) return "ESC: Close Bard's Corner";
     if (gameState.stashOpen) return 'ESC: Close Shared Stash';
     if (gameState.magicDealerOpen) return 'ESC: Close Magic Dealer';
-    if (gameState.loteriaOpen) return 'ESC: Close Lotería';
     // Contextual navigation prompt — when standing next to a tavern point of
     // interest, tell the player exactly what Space will do here.
     if (gameState.floor === 0 && gameState.player && typeof getAdjacentInteractable === 'function') {
@@ -1970,34 +1944,20 @@ let _renderCrashLogCount = 0;
 
 
 function gameLoop() {
+    // Bot harness performance hook: bot-controller.js sets window._botSkipRender
+    // when its display mode is Minimap or Headless, to skip the expensive main-
+    // canvas paint during fast automated batches. (draw() also guards on this
+    // flag, so this is the cheaper outer short-circuit that avoids even the
+    // call.) Audio + the rAF re-schedule still run so the loop stays alive and
+    // the bot keeps stepping; only the visual paint is skipped.
+    if (typeof window !== 'undefined' && window._botSkipRender) {
+        try { if (typeof updateAmbient === 'function') updateAmbient(); } catch (_) {}
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     try {
-        // Bot fast-display mode: skip the expensive full-canvas draw while the
-        // bot is running with rendering suppressed. The loop itself keeps
-        // running (input, audio, the bot's own minimap) — only the main game
-        // canvas render is skipped, which is the single biggest per-frame cost.
-        // We also enforce the canvas's hidden/visible state here, every frame,
-        // so nothing (a run restart, a UI rebuild) can flash the big map back on
-        // between bot ticks. Idempotent: only writes when the value differs.
-        const _gc = (typeof document !== 'undefined') ? document.getElementById('game-canvas') : null;
-        const _stage = (typeof document !== 'undefined') ? document.getElementById('canvas-stage') : null;
-        if (window._botSkipRender) {
-            // Hide the whole stage (not just the canvas) so the empty dark area
-            // doesn't read as "the big map is still showing". Idempotent.
-            if (_stage && _stage.style.display !== 'none') _stage.style.display = 'none';
-            if (_gc && _gc.style.visibility !== 'hidden') _gc.style.visibility = 'hidden';
-        } else {
-            // If the stage was hidden and we're restoring it, the canvas may
-            // have been sized against a 0×0 layout. Detect that exact transition
-            // and force a clean re-fit so it doesn't draw at a broken scale
-            // (the "huge blurry tiles" bug).
-            const _wasHidden = _stage && _stage.style.display === 'none';
-            if (_wasHidden) _stage.style.display = '';
-            if (_gc && _gc.style.visibility === 'hidden') _gc.style.visibility = '';
-            if (_wasHidden && typeof invalidateCanvasSize === 'function') {
-                try { invalidateCanvasSize(); } catch (_) {}
-            }
-            draw();
-        }
+        draw();
     } catch (err) {
         // Log generously at first so the first occurrence is fully diagnosable,
         // then throttle — a bug that throws on every single frame (60/sec)

@@ -152,13 +152,16 @@ function _loteriaAdvance() {
     }
 
     _loteriaCallStartMs = Date.now();
+    // Set the marking window on the round object so the engine owns the
+    // timing contract (testable without the UI timer running).
+    const ms = _loteriaRound.pace.secPerCall * 1000;
+    _loteriaRound.markableUntil = _loteriaCallStartMs + ms;
     _renderLoteriaCurrentCard(card);
     _renderLoteriaTablas();          // re-render so newly-callable cells show as "live"
     _renderLoteriaGoal();
     _startLoteriaPaceBar();
 
     // Schedule the next call after the chosen pace interval.
-    const ms = _loteriaRound.pace.secPerCall * 1000;
     _loteriaCallTimer = setTimeout(() => {
         // When the window closes, any unmarked match for this card is permanently missed.
         _loteriaAdvance();
@@ -200,10 +203,13 @@ function _renderLoteriaGoal() {
     if (pat && _loteriaRound) pat.textContent = _loteriaRound.pattern.label;
 
     // Mini 4×4 diagram of the required pattern.
+    // Use winSets.flat() so Línea highlights all 16 cells (every cell
+    // belongs to at least one winning line), corners/center/full show
+    // exactly the cells that matter. Deduplication via Set is free.
     const mini = document.getElementById('loteria-goal-mini');
     if (mini && _loteriaRound) {
         mini.innerHTML = '';
-        const need = new Set(_loteriaRound.pattern.cells);
+        const need = new Set(_loteriaRound.pattern.winSets.flat());
         for (let i = 0; i < LOTERIA_TABLA_SIZE; i++) {
             const dot = document.createElement('div');
             dot.className = 'loteria-mini-cell' + (need.has(i) ? ' loteria-mini-on' : '');

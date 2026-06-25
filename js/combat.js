@@ -1751,6 +1751,7 @@ function defeatEnemy(enemy) {
 
     if (enemy.type === 'boss') {
         gameMeta.bossesSlain++;
+        if (gameState.runStats) gameState.runStats.bossesDefeated = (gameState.runStats.bossesDefeated || 0) + 1;
         saveMetaProgress();
         // Award Flagon Coins for every boss kill. earnFlagonCoins is
         // defined in treasury.js (loaded after combat.js) — guard avoids
