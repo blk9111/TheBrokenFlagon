@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Broken Flagon — A Tavern-Hub Dungeon Crawler RPG</title>
+  <meta name="description" content="Beneath the tavern lies a darkness older than kingdoms. Descend 100 procedurally-generated floors, battle forgotten kings and cursed relics, and return alive — if you are able. A dungeon crawler RPG with 12 subclasses, an arena, and a living tavern hub.">
+
+  <meta property="og:title" content="The Broken Flagon — A Dungeon Adventure">
+  <meta property="og:description" content="Many descend. Few return. A 100-floor tavern-hub dungeon crawler RPG.">
+  <meta property="og:image" content="../broken-flagon-tavern.png">
+  <meta property="og:type" content="website">
+
+  <link rel="icon" type="image/png" href="../build-assets/icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===================== NAV ===================== -->
+  <nav class="nav">
+    <div class="nav__inner">
+      <a class="nav__brand" href="#top">
+        <img src="../build-assets/icon.png" alt="">
+        The Broken Flagon
+      </a>
+      <button class="nav__toggle" aria-label="Menu" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
+      <div class="nav__links" id="navlinks">
+        <a href="#features">Features</a>
+        <a href="#classes">Classes</a>
+        <a href="#world">The Realm</a>
+        <a href="#dungeon">The Dungeon</a>
+        <a href="#manual">Manual</a>
+        <a class="btn btn--primary" href="../index.html">Play Now</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===================== HERO ===================== -->
+  <header class="hero" id="top">
+    <div class="hero__bg"></div>
+    <div class="hero__veil"></div>
+    <div class="hero__content">
+      <p class="hero__kicker">A Dungeon Adventure</p>
+      <h1 class="hero__title">The Broken <span class="flame">Flagon</span></h1>
+      <p class="hero__tagline">"Many descend. Few return."</p>
+      <p class="hero__desc">
+        Beneath the last warm tavern before the dark lies the Dungeon of Ash —
+        a 100-floor descent of monsters, forgotten kings, cursed relics, and
+        ancient secrets. Claim what treasure you can. Return alive, if you are able.
+      </p>
+      <div class="hero__cta">
+        <a class="btn btn--primary" href="../index.html">▶ Play in Browser</a>
+        <a class="btn btn--ghost" href="#features">Discover the Game</a>
+      </div>
+      <div class="hero__stats">
+        <div class="hero__stat"><b>100</b><span>Floors</span></div>
+        <div class="hero__stat"><b>12</b><span>Subclasses</span></div>
+        <div class="hero__stat"><b>30+</b><span>Enemies</span></div>
+        <div class="hero__stat"><b>5</b><span>Milestone Bosses</span></div>
+      </div>
+    </div>
+    <a class="hero__scroll" href="#features" aria-label="Scroll down">⌄</a>
+  </header>
+
+  <!-- ===================== FEATURES ===================== -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <p class="eyebrow reveal">What awaits below</p>
+      <h2 class="section-title reveal">A roguelike with a <em>home to return to</em></h2>
+      <p class="section-intro reveal">
+        Every run begins and ends at The Broken Flagon. Die in the ash and you lose
+        your gear — but your gold, your fame, your renown, and your legend all carry forward.
+      </p>
+      <div class="features">
+        <div class="feature reveal"><div class="feature__icon">🏰</div><h3>A Living Tavern Hub</h3><p>Floor 0 is home. Eleven NPCs — innkeeper, blacksmith, banker, bard, gambler and more — react to your deeds as your Renown climbs through 15 unlocks.</p></div>
+        <div class="feature reveal"><div class="feature__icon">⚔️</div><h3>Tactical Turn Combat</h3><p>Grid-based, turn-by-turn fights. Read enemy telegraphs, exploit elemental weaknesses, manage status effects, and time your class ability.</p></div>
+        <div class="feature reveal"><div class="feature__icon">🎭</div><h3>12 Distinct Playstyles</h3><p>Four classes, each branching into three subclasses — from the death-defying Berserker to the minion-raising Necromancer.</p></div>
+        <div class="feature reveal"><div class="feature__icon">🩸</div><h3>The Pit — Arena</h3><p>Survive Floor 20 to earn your place. Fight a fame-ranked champion roster across four seasons, capture dungeon beasts, and bet on yourself.</p></div>
+        <div class="feature reveal"><div class="feature__icon">🗺️</div><h3>An Overland Realm</h3><p>Step beyond the courtyard into a 5×5 world of forests, roads, the walled city of Bravehold, and the impassable mountains.</p></div>
+        <div class="feature reveal"><div class="feature__icon">🎲</div><h3>Casino, Relics & Seeds</h3><p>Roll the Flagon Dice, attune powerful relics, and share any run with a 7-character seed code — the same code always builds the same dungeon.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CLASSES ===================== -->
+  <section class="section section--alt" id="classes">
+    <div class="wrap">
+      <p class="eyebrow reveal">Choose your descent</p>
+      <h2 class="section-title reveal">Four classes. <em>Twelve subclasses.</em></h2>
+      <p class="section-intro reveal">Every run starts with a choice that shapes everything that follows.</p>
+      <div class="classes">
+
+        <div class="class-card class-card--warrior reveal">
+          <div class="class-card__art"><img src="../warrior-icon.png" alt="Warrior"></div>
+          <div class="class-card__body">
+            <h3>Warrior</h3>
+            <div class="role">120 HP · 12 ATK · 8 DEF</div>
+            <p>A frontline fighter who absorbs punishment and keeps swinging.</p>
+            <ul class="subs">
+              <li>Berserker <span>— fury without restraint</span></li>
+              <li>Knight <span>— discipline forged into iron</span></li>
+              <li>Gladiator <span>— the crowd demands blood</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="class-card class-card--rogue reveal">
+          <div class="class-card__art"><img src="../rogue-icon.png" alt="Rogue"></div>
+          <div class="class-card__body">
+            <h3>Rogue</h3>
+            <div class="role">90 HP · 11 ATK · 30% Crit</div>
+            <p>A skirmisher who strikes hard and disappears into shadow.</p>
+            <ul class="subs">
+              <li>Assassin <span>— one strike is all it takes</span></li>
+              <li>Trickster <span>— outwit before you outfight</span></li>
+              <li>Shadow <span>— darkness is the sharpest blade</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="class-card class-card--mage reveal">
+          <div class="class-card__art"><img src="../mage-icon.png" alt="Mage"></div>
+          <div class="class-card__body">
+            <h3>Mage</h3>
+            <div class="role">70 HP · 9 ATK · 10 Mana</div>
+            <p>A glass cannon wielding ranged magic and careful mana.</p>
+            <ul class="subs">
+              <li>Elementalist <span>— command primal forces</span></li>
+              <li>Illusionist <span>— nothing is as it seems</span></li>
+              <li>Necromancer <span>— death is a resource</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="class-card class-card--cleric reveal">
+          <div class="class-card__art"><img src="../cleric-icon.png" alt="Cleric"></div>
+          <div class="class-card__body">
+            <h3>Cleric</h3>
+            <div class="role">100 HP · 10 ATK · 8 Mana</div>
+            <p>A balanced fighter blending healing with holy wrath.</p>
+            <ul class="subs">
+              <li>War Domain <span>— battle-blessed, unyielding</span></li>
+              <li>Light Domain <span>— purity through darkness</span></li>
+              <li>Twilight Domain <span>— guardian of the dark</span></li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== WORLD / PILLARS ===================== -->
+  <section class="section" id="world">
+    <div class="wrap">
+
+      <div class="pillar reveal">
+        <div class="pillar__media">
+          <img src="../broken-flagon-tavern.png" alt="The Broken Flagon tavern">
+        </div>
+        <div class="pillar__text">
+          <p class="eyebrow">Floor 0 · Your home base</p>
+          <h3>The Broken Flagon Tavern</h3>
+          <p>The last warm place before the ash. Between runs, walk the hall and trade with its vendors — every face has a purpose, and the room remembers you.</p>
+          <ul>
+            <li>Bank your gold so death can't take it</li>
+            <li>Upgrade gear at the Blacksmith, train permanent stat boosts</li>
+            <li>Earn Tavern Renown across 15 living milestones</li>
+            <li>Hear the Bard sing songs about your real deeds</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="pillar pillar--rev reveal">
+        <div class="pillar__media">
+          <video autoplay muted loop playsinline preload="metadata" poster="../fallengod.jpg">
+            <source src="../Enter_the_Arena.mp4" type="video/mp4">
+          </video>
+        </div>
+        <div class="pillar__text">
+          <p class="eyebrow">Survive Floor 20 to enter</p>
+          <h3>The Pit — Arena</h3>
+          <p>Bards write songs and merchants pay for seats. Climb from an unknown challenger to an undying Legend across four fame-ranked seasons — Bronze, Silver, Gold, and Champion.</p>
+          <ul>
+            <li>Battle a roster of named champions, each with a rivalry record</li>
+            <li>Capture weakened dungeon beasts and fight them for your own</li>
+            <li>Bet gold on yourself — odds rise with your fame</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="pillar reveal">
+        <div class="pillar__media">
+          <img src="../titlebg.jpg" alt="The overland realm">
+        </div>
+        <div class="pillar__text">
+          <p class="eyebrow">Beyond the courtyard</p>
+          <h3>The Overland Realm</h3>
+          <p>A 5×5 world surrounds the tavern. Travel on foot across forests and roads to the walled city of Bravehold, forage for herbs, trade with travelling merchants, and survive roadside ambushes.</p>
+          <ul>
+            <li>Visit Bravehold's General Store, Temple, and Alchemist</li>
+            <li>Forage wild herbs, ash berries, and glowcap mushrooms</li>
+            <li>Toggle the minimap (M) to chart every zone</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== DUNGEON / BESTIARY ===================== -->
+  <section class="section section--alt" id="dungeon">
+    <div class="wrap">
+      <p class="eyebrow reveal">Trust nothing on the deep floors</p>
+      <h2 class="section-title reveal">The <em>Dungeon of Ash</em></h2>
+      <p class="section-intro reveal">
+        One hundred procedurally-generated floors across four named regions — the Ashen Crypt,
+        the Forgotten Mines, the Sunken Cathedral, and the Frost Peaks. Each enemy has its own
+        AI, lore, and tell.
+      </p>
+
+      <div class="bestiary reveal">
+        <div class="beast"><img src="../sprites/goblin.png" alt=""><span>Goblin</span></div>
+        <div class="beast"><img src="../sprites/slime.png" alt=""><span>Slime</span></div>
+        <div class="beast"><img src="../sprites/skeleton.png" alt=""><span>Skeleton</span></div>
+        <div class="beast"><img src="../sprites/archer.png" alt=""><span>Archer</span></div>
+        <div class="beast"><img src="../sprites/brute.png" alt=""><span>Brute</span></div>
+        <div class="beast"><img src="../sprites/bat.png" alt=""><span>Bat</span></div>
+        <div class="beast"><img src="../sprites/spider.png" alt=""><span>Spider</span></div>
+        <div class="beast"><img src="../sprites/cultist.png" alt=""><span>Cultist</span></div>
+        <div class="beast"><img src="../sprites/thief.png" alt=""><span>Thief</span></div>
+        <div class="beast"><img src="../sprites/necromancer.png" alt=""><span>Necromancer</span></div>
+        <div class="beast"><img src="../sprites/warden.png" alt=""><span>Warden</span></div>
+        <div class="beast"><img src="../sprites/imp.png" alt=""><span>Imp</span></div>
+        <div class="beast"><img src="../sprites/ratman.png" alt=""><span>Ratman</span></div>
+        <div class="beast"><img src="../sprites/ghoul.png" alt=""><span>Ghoul</span></div>
+        <div class="beast"><img src="../sprites/lizardman.png" alt=""><span>Lizardman</span></div>
+        <div class="beast"><img src="../sprites/orc.png" alt=""><span>Orc</span></div>
+        <div class="beast"><img src="../sprites/darkknight.png" alt=""><span>Dark Knight</span></div>
+        <div class="beast"><img src="../sprites/demon.png" alt=""><span>Demon</span></div>
+        <div class="beast"><img src="../sprites/mimic.png" alt=""><span>Mimic</span></div>
+        <div class="beast"><img src="../sprites/fallengod.png" alt=""><span>Fallen God</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== BOSSES ===================== -->
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow reveal">Five story milestones</p>
+      <h2 class="section-title reveal">The bosses that <em>guard the deep</em></h2>
+      <p class="section-intro reveal">A boss waits every fifth floor. Five of them are legends — defeat them to earn their achievement and send a guest to the tavern.</p>
+      <div class="bosses">
+        <div class="boss reveal"><div class="floor">Floor 10</div><h4>The Goblin King</h4><p>1.2× HP · 1.1× ATK</p></div>
+        <div class="boss reveal"><div class="floor">Floor 25</div><h4>The Bone Dragon</h4><p>1.5× HP · 1.3× ATK</p></div>
+        <div class="boss reveal"><div class="floor">Floor 50</div><h4>The Lich Lord</h4><p>1.8× HP · 1.4× ATK</p></div>
+        <div class="boss reveal"><div class="floor">Floor 75</div><h4>The Demon Prince</h4><p>2.0× HP · 1.6× ATK</p></div>
+        <div class="boss reveal"><div class="floor">Floor 100</div><h4>The Fallen God</h4><p>2.5× HP · 2.0× ATK</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TRAILER ===================== -->
+  <section class="section section--alt" id="trailer">
+    <div class="wrap">
+      <p class="eyebrow reveal center">See it in motion</p>
+      <h2 class="section-title reveal center">Step into <em>the ash</em></h2>
+      <div class="trailer reveal">
+        <video controls muted playsinline preload="none" poster="../broken-flagon-tavern.png">
+          <source src="../intro.mp4" type="video/mp4">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== CTA / DOWNLOAD ===================== -->
+  <section class="section cta-band" id="play">
+    <div class="wrap">
+      <h2 class="reveal">The flagon is poured. Will you descend?</h2>
+      <p class="reveal">Play instantly in your browser, or download the desktop build for Windows, macOS, and Linux.</p>
+      <div class="hero__cta reveal" style="justify-content:center;">
+        <a class="btn btn--primary" href="../index.html">▶ Play in Browser</a>
+        <a class="btn btn--ghost" href="#manual">Read the Manual</a>
+      </div>
+      <div class="platforms reveal">
+        <span class="platform">🪟 Windows</span>
+        <span class="platform">🍎 macOS</span>
+        <span class="platform">🐧 Linux</span>
+        <span class="platform">🌐 Browser</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer" id="manual">
+    <div class="wrap footer__inner">
+      <div class="footer__brand">
+        The Broken Flagon
+        <p>A tavern-hub dungeon crawler RPG. Many descend. Few return.</p>
+      </div>
+      <div class="footer__links">
+        <div class="footer__col">
+          <h5>Play</h5>
+          <a href="../index.html">Play in Browser</a>
+          <a href="#classes">Classes</a>
+          <a href="#dungeon">The Dungeon</a>
+          <a href="#world">The Realm</a>
+        </div>
+        <div class="footer__col">
+          <h5>Learn</h5>
+          <a href="../manual.md">Player's Manual</a>
+          <a href="../roadmap.html">Roadmap</a>
+          <a href="../CHANGELOG.md">Changelog</a>
+        </div>
+      </div>
+    </div>
+    <div class="wrap footer__legal">
+      The Broken Flagon · v1.15.0 · © 2025–2026 · Built for adventurers everywhere.
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+    // Close mobile nav on link click
+    document.querySelectorAll('#navlinks a').forEach(a =>
+      a.addEventListener('click', () => document.getElementById('navlinks').classList.remove('open')));
+  </script>
+
+</body>
+</html>
