@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Broken Flagon — Bot Analytics</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg:        #0a0805;
+    --panel:     #0e0b07;
+    --panel-2:   #120d08;
+    --border:    #2e1f0e;
+    --border-lit:#4a3318;
+    --gold:      #c8922a;
+    --gold-lit:  #ffd65a;
+    --ink:       #d4bc96;
+    --ink-dim:   #8a7152;
+    --ink-faint: #5a4a34;
+    --red:       #e04444;
+    --green:     #58c26d;
+    --blue:      #62b9ff;
+    --purple:    #c98bff;
+    /* class colors */
+    --warrior:   #e08a3c;
+    --rogue:     #c98bff;
+    --mage:      #62b9ff;
+    --cleric:    #ffd65a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #16100a 0%, transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-family: 'Courier New', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--gold); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 80px; }
+
+  /* ── Masthead ─────────────────────────────────────────────────────────── */
+  header.mast {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 18px;
+    margin-bottom: 22px;
+  }
+  .mast-title {
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin: 0 0 6px;
+  }
+  .mast-h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--gold-lit);
+    margin: 0;
+    text-shadow: 0 0 24px rgba(200,146,42,0.25);
+  }
+  .mast-h1 .flick { color: var(--gold); }
+  .mast-meta {
+    text-align: right;
+    font-size: 11px;
+    color: var(--ink-faint);
+    line-height: 1.7;
+  }
+  .mast-meta b { color: var(--ink); font-weight: 700; }
+
+  #live-dot {
+    font-size: 10px;
+    color: #3a3028;
+    letter-spacing: .04em;
+    align-self: flex-end;
+    padding-bottom: 2px;
+    transition: color .3s;
+  }
+  #live-dot.live-flash { color: #58c26d; }
+
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--gold);
+    font: inherit;
+    font-size: 11px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background .12s, border-color .12s, color .12s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #1a130a; border-color: var(--gold); color: var(--gold-lit); }
+  .btn.danger { color: var(--red); border-color: #3a1010; }
+  .btn.danger:hover { background: #1a0808; border-color: var(--red); color: #ff6868; }
+
+  /* ── Filter bar ───────────────────────────────────────────────────────── */
+  .filterbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 22px;
+  }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .chip {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--ink-dim);
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 11px;
+    cursor: pointer;
+    transition: all .12s;
+  }
+  .chip:hover { border-color: var(--border-lit); color: var(--ink); }
+  .chip.on { background: var(--gold); border-color: var(--gold); color: #0a0805; font-weight: 700; }
+  .chip.cls-warrior.on { background: var(--warrior); border-color: var(--warrior); }
+  .chip.cls-rogue.on   { background: var(--rogue);   border-color: var(--rogue); }
+  .chip.cls-mage.on    { background: var(--mage);    border-color: var(--mage); }
+  .chip.cls-cleric.on  { background: var(--cleric);  border-color: var(--cleric); }
+  .filter-spacer { flex: 1; }
+
+  /* ── Section scaffolding ──────────────────────────────────────────────── */
+  section.block { margin-bottom: 30px; }
+  .block-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .block-num {
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+  }
+  .block-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .block-sub { font-size: 11px; color: var(--ink-faint); margin-left: auto; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+
+  /* ── KPI strip ────────────────────────────────────────────────────────── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 26px;
+  }
+  .kpi {
+    background: var(--panel);
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .kpi b {
+    display: block;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--gold-lit);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  .kpi small {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 3px;
+  }
+
+  /* ── Comparison table ─────────────────────────────────────────────────── */
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.cmp th, table.cmp td {
+    text-align: right;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  table.cmp th {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    cursor: pointer;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+  }
+  table.cmp th:hover { color: var(--gold); }
+  table.cmp th.sorted { color: var(--gold-lit); }
+  table.cmp th .arr { font-size: 8px; opacity: 0.7; }
+  table.cmp td:first-child, table.cmp th:first-child { text-align: left; }
+  table.cmp tbody tr:hover { background: rgba(200,146,42,0.04); }
+  .tag {
+    display: inline-block;
+    width: 9px; height: 9px;
+    border-radius: 2px;
+    margin-right: 7px;
+    vertical-align: middle;
+  }
+  .tag-warrior { background: var(--warrior); }
+  .tag-rogue   { background: var(--rogue); }
+  .tag-mage    { background: var(--mage); }
+  .tag-cleric  { background: var(--cleric); }
+  .sub-row td:first-child { padding-left: 28px; color: var(--ink-dim); }
+  .sub-row td { color: var(--ink-dim); border-bottom-color: #1a130a; }
+  .name-strong { color: var(--ink); font-weight: 700; }
+
+  /* mini bar inside a cell */
+  .mbar-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .mbar {
+    height: 6px;
+    border-radius: 3px;
+    min-width: 2px;
+    background: var(--gold);
+  }
+  .mbar.warrior { background: var(--warrior); }
+  .mbar.rogue   { background: var(--rogue); }
+  .mbar.mage    { background: var(--mage); }
+  .mbar.cleric  { background: var(--cleric); }
+
+  /* ── SVG chart containers ─────────────────────────────────────────────── */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 820px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-cap {
+    font-size: 11px;
+    color: var(--ink-dim);
+    margin: 0 0 10px;
+  }
+  .chart-cap b { color: var(--ink); }
+  svg text { font-family: 'Courier New', monospace; }
+  .axis-line { stroke: var(--border); stroke-width: 1; }
+  .grid-line { stroke: #18120b; stroke-width: 1; }
+  .axis-lbl { fill: var(--ink-faint); font-size: 9px; }
+  .axis-title { fill: var(--ink-dim); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-dim); }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  /* ── Death heatmap ────────────────────────────────────────────────────── */
+  .heat-row { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+  .heat-cell {
+    width: 30px; height: 30px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--ink);
+    border: 1px solid #1a130a;
+    position: relative;
+    cursor: default;
+  }
+  .heat-cell small { font-size: 7px; color: var(--ink-faint); position: absolute; top: 1px; left: 2px; }
+
+  .empty {
+    text-align: center;
+    color: var(--ink-faint);
+    padding: 60px 20px;
+    font-size: 13px;
+  }
+  .empty b { color: var(--gold); display: block; font-size: 16px; margin-bottom: 8px; }
+  .empty code {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--ink);
+  }
+
+  .footnote {
+    text-align: center;
+    font-size: 10px;
+    color: var(--ink-faint);
+    margin-top: 36px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* tiny tooltip */
+  .tip {
+    position: fixed;
+    z-index: 50;
+    pointer-events: none;
+    background: #060504;
+    border: 1px solid var(--border-lit);
+    border-radius: 5px;
+    padding: 6px 9px;
+    font-size: 11px;
+    color: var(--ink);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    opacity: 0;
+    transition: opacity .1s;
+    max-width: 240px;
+  }
+  .tip b { color: var(--gold-lit); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div>
+      <p class="mast-title">The Broken Flagon · Telemetry</p>
+      <h1 class="mast-h1">Bot Analytics <span class="flick">Console</span></h1>
+    </div>
+    <div class="mast-meta" id="mast-meta">reading run records…</div>
+    <span id="live-dot" title="Auto-updates when the bot records a new run">⬤ live</span>
+  </header>
+
+  <div class="filterbar" id="filterbar">
+    <div class="filter-group">
+      <span class="filter-label">Class</span>
+      <div id="class-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Outcome</span>
+      <button class="chip on" data-outcome="all">All</button>
+      <button class="chip" data-outcome="death">Deaths</button>
+      <button class="chip" data-outcome="extract">Extractions</button>
+    </div>
+    <div class="filter-spacer"></div>
+    <div class="controls">
+      <button class="btn" id="btn-refresh" title="Re-read records from localStorage">↻ Refresh</button>
+      <button class="btn" id="btn-csv" title="Download filtered runs as CSV">↓ CSV</button>
+      <button class="btn" id="btn-json" title="Download filtered runs as JSON">↓ JSON</button>
+    </div>
+  </div>
+
+  <div id="content"><div class="empty">Loading…</div></div>
+
+  <div class="footnote" id="footnote"></div>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const PERSIST_KEY = 'bfBot_runRecords';
+const CLASSES = ['warrior', 'rogue', 'mage', 'cleric'];
+const CLASS_COLOR = { warrior:'#e08a3c', rogue:'#c98bff', mage:'#62b9ff', cleric:'#ffd65a' };
+const SUBCLASSES = {
+  warrior: ['knight', 'berserker', 'gladiator'],
+  rogue:   ['assassin', 'trickster', 'shadow'],
+  mage:    ['elementalist', 'illusionist', 'necromancer'],
+  cleric:  ['lightDomain', 'warDomain', 'twilightDomain'],
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ALL_RUNS = [];
+const filters = { classes: new Set(CLASSES), outcome: 'all' };
+let cmpSort = { key: 'avgFloor', dir: -1 };
+
+// ── Load ─────────────────────────────────────────────────────────────────────
+function loadRuns() {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    ALL_RUNS = Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    ALL_RUNS = [];
+  }
+}
+
+function filteredRuns() {
+  return ALL_RUNS.filter(r => {
+    if (!filters.classes.has(r.class)) return false;
+    if (filters.outcome === 'death' && r.outcome !== 'death') return false;
+    if (filters.outcome === 'extract' && r.outcome === 'death') return false;
+    return true;
+  });
+}
+
+// ── Aggregation ──────────────────────────────────────────────────────────────
+function aggregate(runs) {
+  // Per-class and per-subclass rollups.
+  const byClass = {};
+  const bySub = {};
+  for (const r of runs) {
+    const c = r.class || 'unknown';
+    const s = r.subclass || c;
+    if (!byClass[c]) byClass[c] = blankAgg(c);
+    accAgg(byClass[c], r);
+    const skey = c + '/' + s;
+    if (!bySub[skey]) bySub[skey] = blankAgg(s, c);
+    accAgg(bySub[skey], r);
+  }
+  for (const k in byClass) finishAgg(byClass[k]);
+  for (const k in bySub) finishAgg(bySub[k]);
+  return { byClass, bySub };
+}
+
+function blankAgg(name, parent) {
+  return {
+    name, parent: parent || null,
+    runs: 0, deaths: 0, floorSum: 0, bestFloor: 0,
+    killSum: 0, goldSum: 0, levelSum: 0, bossSum: 0,
+    potionSum: 0, dmgEffSum: 0, dmgEffN: 0,
+    avgFloor: 0, deathRate: 0, avgKills: 0, avgGold: 0,
+    avgLevel: 0, avgBoss: 0, avgPotions: 0, avgDmgEff: 0,
+  };
+}
+function accAgg(a, r) {
+  a.runs++;
+  a.deaths += r.outcome === 'death' ? 1 : 0;
+  a.floorSum += r.floor || 0;
+  a.bestFloor = Math.max(a.bestFloor, r.floor || 0);
+  a.killSum += r.kills || 0;
+  a.goldSum += r.gold || 0;
+  a.levelSum += r.level || 0;
+  a.bossSum += r.bossesKilled || 0;
+  a.potionSum += r.potionsUsed || 0;
+  if (typeof r.dmgEfficiency === 'number' && r.dmgEfficiency > 0) {
+    a.dmgEffSum += r.dmgEfficiency; a.dmgEffN++;
+  }
+}
+function finishAgg(a) {
+  const n = a.runs || 1;
+  a.avgFloor   = a.floorSum / n;
+  a.deathRate  = a.deaths / n;
+  a.avgKills   = a.killSum / n;
+  a.avgGold    = a.goldSum / n;
+  a.avgLevel   = a.levelSum / n;
+  a.avgBoss    = a.bossSum / n;
+  a.avgPotions = a.potionSum / n;
+  a.avgDmgEff  = a.dmgEffN ? a.dmgEffSum / a.dmgEffN : 0;
+}
+
+// Difficulty curve: aggregate floorProfiles across runs → per-floor medians.
+function difficultyCurve(runs) {
+  const byFloor = {}; // floor → {msArr, dmgArr, deaths, reached}
+  for (const r of runs) {
+    const profs = r.floorProfiles || [];
+    for (const p of profs) {
+      const f = p.floor;
+      if (f == null || f < 1) continue;
+      if (!byFloor[f]) byFloor[f] = { ms: [], dmg: [], gold: [], abil: [], reached: 0 };
+      byFloor[f].ms.push(p.ms || 0);
+      byFloor[f].dmg.push(p.dmgTaken || 0);
+      byFloor[f].gold.push(p.goldLooted || 0);
+      byFloor[f].abil.push(p.abilities || 0);
+      byFloor[f].reached++;
+    }
+  }
+  // Death-floor count (where the run ended in death)
+  const deathByFloor = {};
+  for (const r of runs) {
+    if (r.outcome === 'death') deathByFloor[r.floor] = (deathByFloor[r.floor] || 0) + 1;
+  }
+  const floors = Object.keys(byFloor).map(Number).sort((a, b) => a - b);
+  return floors.map(f => {
+    const b = byFloor[f];
+    return {
+      floor: f,
+      reached: b.reached,
+      medMs: median(b.ms),
+      medDmg: median(b.dmg),
+      medGold: median(b.gold),
+      medAbil: median(b.abil),
+      deaths: deathByFloor[f] || 0,
+    };
+  });
+}
+
+function median(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const runs = filteredRuns();
+  renderMeta();
+  const content = document.getElementById('content');
+
+  if (!ALL_RUNS.length) {
+    content.innerHTML = `
+      <div class="empty">
+        <b>No run records found</b>
+        Run a batch in the bot dashboard first. Records are saved to
+        <code>localStorage['${PERSIST_KEY}']</code> and read here.<br><br>
+        This page must be opened from the <b>same origin</b> as the game
+        (e.g. both on <code>localhost:8000</code>) so it can see that storage.
+      </div>`;
+    return;
+  }
+  if (!runs.length) {
+    content.innerHTML = `<div class="empty"><b>No runs match the filters</b>Widen the class or outcome filters above.</div>`;
+    return;
+  }
+
+  const { byClass, bySub } = aggregate(runs);
+  const curve = difficultyCurve(runs);
+
+  content.innerHTML = [
+    kpiStrip(runs),
+    classComparisonBlock(byClass, bySub),
+    difficultyBlock(curve),
+    deathBlock(runs, curve),
+  ].join('');
+
+  // Post-render wiring
+  wireSortHeaders();
+  wireTooltips();
+}
+
+function renderMeta() {
+  const n = ALL_RUNS.length;
+  const last = n ? new Date(Math.max(...ALL_RUNS.map(r => r.ts || 0))) : null;
+  const lastStr = last && !isNaN(last) ? last.toLocaleString() : '—';
+  document.getElementById('mast-meta').innerHTML =
+    `<b>${n.toLocaleString()}</b> runs on record<br>latest: ${lastStr}`;
+  document.getElementById('footnote').innerHTML =
+    `Reading <code style="color:var(--ink)">localStorage['${PERSIST_KEY}']</code> · ` +
+    `${ALL_RUNS.length.toLocaleString()} total runs · ` +
+    `The Broken Flagon bot telemetry`;
+}
+
+// KPI strip ───────────────────────────────────────────────────────────────────
+function kpiStrip(runs) {
+  const n = runs.length;
+  const deaths = runs.filter(r => r.outcome === 'death').length;
+  const best = runs.reduce((m, r) => Math.max(m, r.floor || 0), 0);
+  const avgFloor = runs.reduce((s, r) => s + (r.floor || 0), 0) / n;
+  const totalKills = runs.reduce((s, r) => s + (r.kills || 0), 0);
+  const totalGold = runs.reduce((s, r) => s + (r.gold || 0), 0);
+  const totalBoss = runs.reduce((s, r) => s + (r.bossesKilled || 0), 0);
+  const cells = [
+    ['RUNS', n.toLocaleString()],
+    ['DEATH RATE', (deaths / n * 100).toFixed(0) + '%'],
+    ['BEST FLOOR', best],
+    ['AVG FLOOR', avgFloor.toFixed(1)],
+    ['TOTAL KILLS', totalKills.toLocaleString()],
+    ['TOTAL GOLD', totalGold.toLocaleString()],
+    ['BOSSES', totalBoss.toLocaleString()],
+  ];
+  return `<div class="kpi-strip">${cells.map(([l, v]) =>
+    `<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join('')}</div>`;
+}
+
+// Block 1 — Class / subclass comparison ───────────────────────────────────────
+const CMP_COLS = [
+  { key: 'name',      label: 'Class / Subclass', fmt: null },
+  { key: 'runs',      label: 'Runs',     fmt: v => v },
+  { key: 'avgFloor',  label: 'Avg Floor',fmt: v => v.toFixed(1), bar: true, barMax: 'avgFloor' },
+  { key: 'bestFloor', label: 'Best',     fmt: v => v },
+  { key: 'deathRate', label: 'Death %',  fmt: v => (v * 100).toFixed(0) + '%' },
+  { key: 'avgKills',  label: 'Kills/Run',fmt: v => v.toFixed(1) },
+  { key: 'avgGold',   label: 'Gold/Run', fmt: v => Math.round(v) },
+  { key: 'avgLevel',  label: 'Avg Lvl',  fmt: v => v.toFixed(1) },
+  { key: 'avgBoss',   label: 'Boss/Run', fmt: v => v.toFixed(2) },
+  { key: 'avgDmgEff', label: 'Dmg Eff',  fmt: v => v ? v.toFixed(1) + '×' : '—' },
+];
+
+function classComparisonBlock(byClass, bySub) {
+  // Build rows: each class, then its subclasses indented.
+  const classRows = Object.values(byClass).sort(sortCmp);
+  const barMax = Math.max(0.1, ...classRows.map(r => r[cmpSort.key === 'name' ? 'avgFloor' : cmpSort.key] || 0),
+                                ...Object.values(bySub).map(r => r[cmpSort.key === 'name' ? 'avgFloor' : cmpSort.key] || 0));
+
+  let body = '';
+  for (const cr of classRows) {
+    body += cmpRow(cr, false, barMax);
+    const subs = Object.values(bySub)
+      .filter(s => s.parent === cr.name)
+      .sort(sortCmp);
+    for (const sr of subs) body += cmpRow(sr, true, barMax);
+  }
+
+  const head = CMP_COLS.map(c => {
+    const sorted = cmpSort.key === c.key;
+    const arr = sorted ? (cmpSort.dir < 0 ? '▼' : '▲') : '';
+    return `<th data-key="${c.key}" class="${sorted ? 'sorted' : ''}">${c.label} <span class="arr">${arr}</span></th>`;
+  }).join('');
+
+  return `
+    <section class="block">
+      <div class="block-head">
+        <span class="block-num">01</span>
+        <span class="block-title">Class &amp; Subclass Performance</span>
+        <span class="block-sub">click a column to sort · subclasses indented</span>
+      </div>
+      <div class="panel" style="padding:6px 4px;overflow-x:auto">
+        <table class="cmp">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function cmpRow(a, isSub, barMax) {
+  const cls = a.parent || a.name;
+  const tds = CMP_COLS.map(c => {
+    if (c.key === 'name') {
+      if (isSub) return `<td>${a.name}</td>`;
+      return `<td><span class="tag tag-${cls}"></span><span class="name-strong">${a.name}</span></td>`;
+    }
+    const v = a[c.key] || 0;
+    if (c.bar) {
+      const pct = Math.max(2, (v / barMax) * 100);
+      return `<td><div class="mbar-wrap"><span>${c.fmt(v)}</span><span class="mbar ${cls}" style="width:${pct}%;max-width:80px"></span></div></td>`;
+    }
+    return `<td>${c.fmt(v)}</td>`;
+  }).join('');
+  return `<tr class="${isSub ? 'sub-row' : ''}">${tds}</tr>`;
+}
+
+function sortCmp(a, b) {
+  const k = cmpSort.key;
+  if (k === 'name') return a.name.localeCompare(b.name) * cmpSort.dir;
+  return ((a[k] || 0) - (b[k] || 0)) * cmpSort.dir;
+}
+
+function wireSortHeaders() {
+  document.querySelectorAll('table.cmp th').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (cmpSort.key === key) cmpSort.dir *= -1;
+      else { cmpSort.key = key; cmpSort.dir = key === 'name' ? 1 : -1; }
+      render();
+    });
+  });
+}
+
+// Block 2 — Difficulty curve / balance ────────────────────────────────────────
+function difficultyBlock(curve) {
+  if (!curve.length) {
+    return blockShell('02', 'Difficulty Curve &amp; Floor Pacing',
+      '<div class="empty" style="padding:30px">No per-floor profiles in these runs yet.</div>');
+  }
+  const timeChart = lineChart(curve, 'medMs', { yLabel: 'sec/floor', scaleY: v => v / 1000, color: '#e08a3c', fmt: v => (v/1000).toFixed(1)+'s' });
+  const dmgChart  = lineChart(curve, 'medDmg', { yLabel: 'dmg taken', color: '#e04444', fmt: v => Math.round(v) });
+  const reachChart= barChart(curve, 'reached', { yLabel: 'runs reached', color: '#62b9ff' });
+  const goldChart = lineChart(curve, 'medGold', { yLabel: 'gold/floor', color: '#ffd65a', fmt: v => Math.round(v) });
+
+  const inner = `
+    <div class="chart-grid">
+      <div class="panel">
+        <p class="chart-cap"><b>Time per floor</b> — median seconds the bot spends clearing each floor. Rising = harder or slower to path.</p>
+        ${timeChart}
+      </div>
+      <div class="panel">
+        <p class="chart-cap"><b>Damage taken per floor</b> — median HP lost. Spikes mark difficulty walls.</p>
+        ${dmgChart}
+      </div>
+      <div class="panel">
+        <p class="chart-cap"><b>Floor reach</b> — how many runs got to each floor. The cliff is where runs end.</p>
+        ${reachChart}
+      </div>
+      <div class="panel">
+        <p class="chart-cap"><b>Gold per floor</b> — median gold looted. Flat or falling late = reward starvation.</p>
+        ${goldChart}
+      </div>
+    </div>`;
+  return blockShell('02', 'Difficulty Curve &amp; Floor Pacing', inner,
+    'median across ' + curve.reduce((s,c)=>Math.max(s,c.reached),0) + ' deepest runs');
+}
+
+// Block 3 — Death analysis ────────────────────────────────────────────────────
+function deathBlock(runs, curve) {
+  const deaths = runs.filter(r => r.outcome === 'death');
+  if (!deaths.length) {
+    return blockShell('03', 'Death Analysis',
+      '<div class="empty" style="padding:30px">No deaths in the filtered set. The bot is extracting cleanly.</div>');
+  }
+  // deaths by floor
+  const byFloor = {};
+  for (const d of deaths) byFloor[d.floor] = (byFloor[d.floor] || 0) + 1;
+  const maxDeath = Math.max(...Object.values(byFloor));
+  const maxFloor = Math.max(...Object.keys(byFloor).map(Number));
+
+  let heat = '';
+  for (let f = 1; f <= maxFloor; f++) {
+    const c = byFloor[f] || 0;
+    const t = c / maxDeath;
+    const bg = c === 0 ? '#0c0a07'
+      : `rgba(224,68,68,${(0.18 + t * 0.8).toFixed(2)})`;
+    heat += `<div class="heat-cell" style="background:${bg}"
+      data-tip="<b>Floor ${f}</b><br>${c} death${c===1?'':'s'} (${(c/deaths.length*100).toFixed(0)}% of deaths)">
+      <small>${f}</small>${c || ''}</div>`;
+  }
+
+  // deaths by class
+  const byClass = {};
+  for (const d of deaths) byClass[d.class] = (byClass[d.class] || 0) + 1;
+  const classBars = CLASSES.filter(c => byClass[c]).map(c => {
+    const pct = byClass[c] / deaths.length * 100;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0">
+      <span style="width:64px;color:${CLASS_COLOR[c]};text-transform:capitalize;font-size:11px">${c}</span>
+      <span class="mbar ${c}" style="height:10px;width:${pct*1.8}px;min-width:3px"></span>
+      <span style="font-size:11px;color:var(--ink-dim)">${byClass[c]} (${pct.toFixed(0)}%)</span>
+    </div>`;
+  }).join('');
+
+  // deepest fatal floor + median fatal floor
+  const fatalFloors = deaths.map(d => d.floor).sort((a,b)=>a-b);
+  const medFatal = median(fatalFloors);
+
+  const inner = `
+    <div class="chart-grid">
+      <div class="panel">
+        <p class="chart-cap"><b>Death heatmap</b> — where runs end. Hot cells are killing floors worth tuning.</p>
+        <div class="heat-row">${heat}</div>
+        <div class="legend">
+          <span><i style="background:#0c0a07;border:1px solid #1a130a"></i>0</span>
+          <span><i style="background:rgba(224,68,68,0.3)"></i>few</span>
+          <span><i style="background:rgba(224,68,68,0.98)"></i>many</span>
+          <span style="margin-left:auto">median fatal floor: <b style="color:var(--ink)">${medFatal}</b></span>
+        </div>
+      </div>
+      <div class="panel">
+        <p class="chart-cap"><b>Deaths by class</b> — which kit dies most in this set.</p>
+        ${classBars}
+      </div>
+    </div>`;
+  return blockShell('03', 'Death Analysis', inner, deaths.length + ' deaths analysed');
+}
+
+function blockShell(num, title, inner, sub) {
+  return `
+    <section class="block">
+      <div class="block-head">
+        <span class="block-num">${num}</span>
+        <span class="block-title">${title}</span>
+        ${sub ? `<span class="block-sub">${sub}</span>` : ''}
+      </div>
+      ${inner}
+    </section>`;
+}
+
+// ── SVG charts ───────────────────────────────────────────────────────────────
+const CW = 460, CH = 180, PAD = { l: 38, r: 12, t: 12, b: 26 };
+function plotDims() {
+  return { w: CW - PAD.l - PAD.r, h: CH - PAD.t - PAD.b };
+}
+
+function lineChart(curve, key, opt) {
+  const { w, h } = plotDims();
+  const xs = curve.map(c => c.floor);
+  const ys = curve.map(c => c[key] || 0);
+  const xMax = Math.max(...xs), xMin = Math.min(...xs);
+  const yMax = Math.max(1, ...ys);
+  const sx = f => PAD.l + (xMax === xMin ? w / 2 : (f - xMin) / (xMax - xMin) * w);
+  const sy = v => PAD.t + h - (v / yMax) * h;
+
+  const pts = curve.map(c => `${sx(c.floor).toFixed(1)},${sy(c[key] || 0).toFixed(1)}`);
+  const path = 'M' + pts.join(' L');
+  // area under line
+  const area = `M${sx(xMin)},${PAD.t + h} L` + pts.join(' L') + ` L${sx(xMax)},${PAD.t + h} Z`;
+
+  const dots = curve.map(c => {
+    const v = c[key] || 0;
+    const disp = opt.fmt ? opt.fmt(v) : v;
+    return `<circle cx="${sx(c.floor).toFixed(1)}" cy="${sy(v).toFixed(1)}" r="3"
+      fill="${opt.color}" stroke="#0a0805" stroke-width="1"
+      data-tip="<b>Floor ${c.floor}</b><br>${opt.yLabel}: ${disp}<br>${c.reached} runs"></circle>`;
+  }).join('');
+
+  return chartFrame(w, h, yMax, xMin, xMax, opt, `
+    <defs><linearGradient id="g_${key}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${opt.color}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${opt.color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#g_${key})"/>
+    <path d="${path}" fill="none" stroke="${opt.color}" stroke-width="1.8"/>
+    ${dots}
+  `);
+}
+
+function barChart(curve, key, opt) {
+  const { w, h } = plotDims();
+  const xs = curve.map(c => c.floor);
+  const xMax = Math.max(...xs), xMin = Math.min(...xs);
+  const yMax = Math.max(1, ...curve.map(c => c[key] || 0));
+  const n = curve.length;
+  const bw = Math.max(2, w / n * 0.7);
+  const sx = f => PAD.l + (xMax === xMin ? w / 2 : (f - xMin) / (xMax - xMin) * w);
+  const sy = v => PAD.t + h - (v / yMax) * h;
+
+  const bars = curve.map(c => {
+    const v = c[key] || 0;
+    const x = sx(c.floor) - bw / 2;
+    const y = sy(v);
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}"
+      height="${(PAD.t + h - y).toFixed(1)}" fill="${opt.color}" opacity="0.8" rx="1"
+      data-tip="<b>Floor ${c.floor}</b><br>${c.reached} runs reached"></rect>`;
+  }).join('');
+
+  return chartFrame(w, h, yMax, xMin, xMax, opt, bars);
+}
+
+function chartFrame(w, h, yMax, xMin, xMax, opt, inner) {
+  // y gridlines (3)
+  let grid = '';
+  for (let i = 0; i <= 3; i++) {
+    const yy = PAD.t + h - (i / 3) * h;
+    const val = (yMax * i / 3);
+    const disp = opt.scaleY ? opt.scaleY(val) : val;
+    grid += `<line class="grid-line" x1="${PAD.l}" y1="${yy}" x2="${PAD.l + w}" y2="${yy}"/>`;
+    grid += `<text class="axis-lbl" x="${PAD.l - 5}" y="${yy + 3}" text-anchor="end">${
+      Math.round(disp * 10) / 10}</text>`;
+  }
+  // x labels (first, mid, last)
+  const xticks = [xMin, Math.round((xMin + xMax) / 2), xMax].filter((v, i, a) => a.indexOf(v) === i);
+  let xlab = '';
+  for (const f of xticks) {
+    const xx = PAD.l + (xMax === xMin ? w / 2 : (f - xMin) / (xMax - xMin) * w);
+    xlab += `<text class="axis-lbl" x="${xx}" y="${PAD.t + h + 16}" text-anchor="middle">F${f}</text>`;
+  }
+  return `<svg viewBox="0 0 ${CW} ${CH}" width="100%" preserveAspectRatio="xMidYMid meet">
+    ${grid}
+    <line class="axis-line" x1="${PAD.l}" y1="${PAD.t + h}" x2="${PAD.l + w}" y2="${PAD.t + h}"/>
+    ${inner}
+    ${xlab}
+    <text class="axis-title" x="${PAD.l}" y="9">${opt.yLabel}</text>
+  </svg>`;
+}
+
+// ── Tooltips ─────────────────────────────────────────────────────────────────
+function wireTooltips() {
+  const tip = document.getElementById('tip');
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('mousemove', e => {
+      tip.innerHTML = el.dataset.tip;
+      tip.style.opacity = '1';
+      const pad = 14;
+      let x = e.clientX + pad, y = e.clientY + pad;
+      const r = tip.getBoundingClientRect();
+      if (x + r.width > window.innerWidth) x = e.clientX - r.width - pad;
+      if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+    el.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+  });
+}
+
+// ── Filter chips ─────────────────────────────────────────────────────────────
+function buildClassChips() {
+  const box = document.getElementById('class-chips');
+  box.innerHTML = CLASSES.map(c =>
+    `<button class="chip cls-${c} on" data-class="${c}">${c}</button>`).join('');
+  box.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const c = chip.dataset.class;
+      if (filters.classes.has(c)) {
+        if (filters.classes.size > 1) { filters.classes.delete(c); chip.classList.remove('on'); }
+      } else { filters.classes.add(c); chip.classList.add('on'); }
+      render();
+    });
+  });
+}
+function wireOutcomeChips() {
+  document.querySelectorAll('[data-outcome]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('[data-outcome]').forEach(c => c.classList.remove('on'));
+      chip.classList.add('on');
+      filters.outcome = chip.dataset.outcome;
+      render();
+    });
+  });
+}
+
+// ── Export ───────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const runs = filteredRuns();
+  if (!runs.length) return;
+  const cols = ['class','subclass','floor','outcome','kills','gold','level','weapon',
+                'bossesKilled','potionsUsed','dmgEfficiency','seed','ts'];
+  const head = cols.join(',');
+  const rows = runs.map(r => cols.map(c => {
+    const v = r[c] == null ? '' : String(r[c]);
+    return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  }).join(','));
+  download('bot-runs.csv', [head, ...rows].join('\n'), 'text/csv');
+}
+function exportJSON() {
+  const runs = filteredRuns();
+  if (!runs.length) return;
+  download('bot-runs.json', JSON.stringify(runs, null, 2), 'application/json');
+}
+function download(name, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+function boot() {
+  buildClassChips();
+  wireOutcomeChips();
+  document.getElementById('btn-refresh').addEventListener('click', () => { loadRuns(); render(); });
+  document.getElementById('btn-csv').addEventListener('click', exportCSV);
+  document.getElementById('btn-json').addEventListener('click', exportJSON);
+  loadRuns();
+  render();
+
+  // ── Live update: storage event fires when the bot tab writes new runs ──
+  // The bot and analytics run on the same file:// origin, so localStorage
+  // changes in the bot tab propagate here via the storage event. We also
+  // poll every 10 s as a fallback (same-tab writes don't fire the event).
+  window.addEventListener('storage', e => {
+    if (e.key === PERSIST_KEY) {
+      loadRuns();
+      render();
+      _flashLiveIndicator('new run');
+    }
+  });
+
+  let _lastCount = ALL_RUNS.length;
+  setInterval(() => {
+    const prev = _lastCount;
+    loadRuns();
+    if (ALL_RUNS.length !== prev) {
+      _lastCount = ALL_RUNS.length;
+      render();
+      _flashLiveIndicator('new run');
+    }
+  }, 10000);
+}
+
+function _flashLiveIndicator(reason) {
+  const el = document.getElementById('live-dot');
+  if (!el) return;
+  el.title = `Auto-updated: ${reason} — ${new Date().toLocaleTimeString()}`;
+  el.classList.add('live-flash');
+  setTimeout(() => el.classList.remove('live-flash'), 1200);
+}
+
+boot();
+</script>
+</body>
+</html>
