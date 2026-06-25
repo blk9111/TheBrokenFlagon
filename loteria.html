@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Lotería — standalone</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   La Lotería — STANDALONE
+   A self-contained Mexican Lotería that runs on its own, with no dependency on
+   The Broken Flagon's runtime (no gameState / gameMeta / shared CSS). It reuses
+   only the pure game engine in js/loteria.js. Coins are tracked locally in the
+   browser via localStorage, so progress persists between visits but is entirely
+   separate from the main game's economy.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+    --loteria-accent: #ff5e8a;   /* rosa mexicano */
+    --loteria-gold:   #ffd65a;
+    --loteria-teal:   #2bb6a6;
+    --loteria-urgent: #ff4242;
+    --loteria-paper:  #fbf3e0;
+    --muted: #aaa397;
+    --font-display: 'Cinzel', Georgia, 'Times New Roman', serif;
+    --font-body: "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    min-height: 100%;
+    font-family: var(--font-body);
+    color: #f0e6d0;
+    background:
+        radial-gradient(ellipse 70% 55% at 50% 0%, rgba(255, 94, 138, 0.14), transparent 70%),
+        linear-gradient(180deg, #150a10, #0c0509);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+}
+
+#loteria-inner {
+    width: min(880px, 96vw);
+    max-height: 94vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #1c1014, #140b10);
+    border: 2px solid var(--loteria-accent);
+    border-radius: 16px;
+    box-shadow: 0 0 50px rgba(255, 94, 138, 0.25);
+    padding: 22px 26px 26px;
+}
+#loteria-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid rgba(255, 214, 90, 0.25);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+}
+#loteria-header h2 {
+    font-family: var(--font-display);
+    color: var(--loteria-gold);
+    margin: 0;
+    font-size: 26px;
+    letter-spacing: 0.04em;
+    flex: 0 0 auto;
+}
+#loteria-coins-display {
+    margin-left: auto;
+    color: var(--loteria-gold);
+    font-family: var(--font-display);
+    font-size: 14px;
+}
+.loteria-coin-icon { color: var(--loteria-gold); }
+#loteria-header button {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #fff;
+    padding: 7px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+}
+#loteria-header button:hover { border-color: var(--loteria-accent); }
+
+/* ── Setup screen ── */
+.loteria-tagline {
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.6;
+    text-align: center;
+    margin: 0 auto 22px;
+    max-width: 600px;
+    font-family: var(--font-body);
+}
+.loteria-setup-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    justify-content: center;
+}
+.loteria-setup-label {
+    font-family: var(--font-display);
+    color: var(--loteria-gold);
+    font-size: 15px;
+    width: 70px;
+    text-align: right;
+    letter-spacing: 0.05em;
+}
+.loteria-choice-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.loteria-choice {
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.14);
+    color: #f0e6d0;
+    padding: 9px 16px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    min-width: 44px;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.loteria-choice:hover { border-color: var(--loteria-accent); transform: translateY(-1px); }
+.loteria-choice-active {
+    border-color: var(--loteria-accent);
+    background: rgba(255, 94, 138, 0.16);
+    box-shadow: 0 0 14px rgba(255, 94, 138, 0.3);
+}
+.loteria-choice-pace { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 96px; }
+.loteria-pace-name { font-size: 14px; }
+.loteria-pace-mult { font-size: 11px; color: var(--loteria-teal); font-weight: 600; }
+
+#loteria-stake-summary {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    align-items: baseline;
+    margin: 22px 0 14px;
+    font-size: 16px;
+    color: #f0e6d0;
+}
+#loteria-stake-summary strong { color: var(--loteria-gold); font-size: 19px; font-family: var(--font-display); }
+.loteria-stake-coins { color: var(--muted); font-size: 13px; }
+
+#loteria-start-btn {
+    display: block;
+    margin: 0 auto;
+    padding: 13px 30px;
+    background: linear-gradient(180deg, var(--loteria-accent), #d4376a);
+    color: #fff;
+    font-weight: 800;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    font-family: var(--font-display);
+    letter-spacing: 0.03em;
+    box-shadow: 0 4px 16px rgba(255, 94, 138, 0.3);
+    transition: filter 0.15s, transform 0.12s;
+}
+#loteria-start-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.loteria-btn-disabled, #loteria-start-btn:disabled {
+    background: rgba(255,255,255,0.1) !important;
+    color: var(--muted) !important;
+    cursor: not-allowed;
+    box-shadow: none !important;
+    transform: none !important;
+}
+.loteria-setup-note { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 12px; font-style: italic; }
+
+/* ── Play screen ── */
+#loteria-play-top {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+#loteria-caller-area {
+    flex: 1 1 280px;
+    background: rgba(0,0,0,0.28);
+    border: 1px solid rgba(255, 214, 90, 0.22);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+}
+.loteria-caller-label, .loteria-goal-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--loteria-gold);
+    margin-bottom: 8px;
+}
+#loteria-current-card {
+    background: var(--loteria-paper);
+    border-radius: 12px;
+    padding: 14px 10px;
+    margin: 0 auto 10px;
+    max-width: 200px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4), inset 0 0 0 3px rgba(212,55,106,0.25);
+}
+.loteria-card-pop { animation: loteria-pop 0.34s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes loteria-pop { from { transform: scale(0.7) rotate(-4deg); opacity: 0.3; } to { transform: scale(1) rotate(0); opacity: 1; } }
+#loteria-current-glyph { font-size: 60px; line-height: 1; }
+#loteria-current-name {
+    font-family: var(--font-display);
+    color: #2a1015;
+    font-size: 18px;
+    font-weight: 800;
+    margin-top: 6px;
+}
+#loteria-current-verse {
+    color: var(--muted);
+    font-size: 12.5px;
+    font-style: italic;
+    min-height: 32px;
+    margin-bottom: 8px;
+    font-family: var(--font-body);
+}
+#loteria-pace-bar-track {
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+#loteria-pace-bar {
+    height: 100%;
+    width: 100%;
+    background: var(--loteria-accent);
+    border-radius: 3px;
+    transition: background 0.2s;
+}
+
+#loteria-goal-area {
+    flex: 0 0 200px;
+    background: rgba(0,0,0,0.28);
+    border: 1px solid rgba(43, 182, 166, 0.25);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+}
+#loteria-goal-pattern {
+    font-family: var(--font-display);
+    color: var(--loteria-teal);
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+#loteria-goal-mini {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    width: 76px;
+    margin: 0 auto 10px;
+}
+.loteria-mini-cell {
+    aspect-ratio: 1;
+    background: rgba(255,255,255,0.07);
+    border-radius: 2px;
+}
+.loteria-mini-on { background: var(--loteria-teal); box-shadow: 0 0 6px rgba(43,182,166,0.6); }
+#loteria-progress-note { font-size: 13px; color: var(--muted); min-height: 18px; font-weight: 700; }
+.loteria-progress-hot { color: var(--loteria-urgent) !important; animation: loteria-flash 0.7s ease-in-out infinite; }
+@keyframes loteria-flash { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+#loteria-called-count { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ── Tabla boards ── */
+#loteria-tablas {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.loteria-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    background: rgba(212, 55, 106, 0.12);
+    padding: 8px;
+    border-radius: 10px;
+    border: 1.5px solid rgba(255, 94, 138, 0.3);
+}
+/* Smaller cells when multiple tabla are in play. */
+.loteria-tablas-count-1 .loteria-cell { width: 92px; height: 92px; }
+.loteria-tablas-count-2 .loteria-cell { width: 74px; height: 74px; }
+.loteria-tablas-count-3 .loteria-cell { width: 58px; height: 58px; }
+.loteria-tablas-count-4 .loteria-cell { width: 52px; height: 52px; }
+.loteria-cell {
+    position: relative;
+    background: var(--loteria-paper);
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px;
+    transition: transform 0.1s, box-shadow 0.15s;
+    overflow: hidden;
+}
+.loteria-cell:hover { transform: scale(1.04); }
+.loteria-cell-glyph { font-size: 26px; line-height: 1; }
+.loteria-tablas-count-3 .loteria-cell-glyph,
+.loteria-tablas-count-4 .loteria-cell-glyph { font-size: 20px; }
+.loteria-cell-name {
+    font-size: 8.5px;
+    color: #4a2a30;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.05;
+    font-family: var(--font-display);
+}
+.loteria-tablas-count-3 .loteria-cell-name,
+.loteria-tablas-count-4 .loteria-cell-name { display: none; }
+
+/* A cell whose card is being called right now — invites the click. */
+.loteria-cell-live {
+    box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 18px rgba(255,214,90,0.7);
+    animation: loteria-live-pulse 0.8s ease-in-out infinite;
+}
+@keyframes loteria-live-pulse {
+    0%,100% { box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 14px rgba(255,214,90,0.5); }
+    50%     { box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 24px rgba(255,214,90,0.9); }
+}
+/* A marked cell — the bean (frijol) sits on top. */
+.loteria-cell-marked { filter: saturate(0.6) brightness(0.82); cursor: default; }
+.loteria-cell-marked:hover { transform: none; }
+.loteria-bean {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    opacity: 0.85;
+    animation: loteria-bean-drop 0.25s ease;
+    pointer-events: none;
+}
+@keyframes loteria-bean-drop { from { transform: scale(1.8); opacity: 0; } to { transform: scale(1); opacity: 0.85; } }
+
+/* ── Lotería full-card art (sprites/loteria/<id>.png), optional ── */
+.loteria-cell-art {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 7px;
+    pointer-events: none;
+    user-select: none;
+    display: none;
+}
+.loteria-cell-hasart .loteria-cell-art { display: block; }
+.loteria-cell-hasart .loteria-cell-glyph,
+.loteria-cell-hasart .loteria-cell-name { display: none; }
+.loteria-cell-hasart { background: transparent; padding: 0; }
+
+/* ── Result overlay ── */
+#loteria-result-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    animation: loteria-fade 0.3s ease;
+}
+@keyframes loteria-fade { from { opacity: 0; } to { opacity: 1; } }
+#loteria-result-card {
+    text-align: center;
+    padding: 38px 44px;
+    border-radius: 18px;
+    max-width: 420px;
+    background: radial-gradient(circle at 50% 0%, rgba(40,18,26,0.98), rgba(16,8,12,0.98));
+    border: 2px solid var(--loteria-accent);
+    box-shadow: 0 0 56px rgba(255,94,138,0.4);
+    animation: loteria-pop 0.45s cubic-bezier(0.34,1.56,0.64,1);
+}
+.loteria-result-win { border-color: var(--loteria-gold) !important; box-shadow: 0 0 70px rgba(255,214,90,0.5) !important; }
+.loteria-result-loss { border-color: rgba(255,255,255,0.2) !important; box-shadow: 0 0 40px rgba(0,0,0,0.5) !important; }
+#loteria-result-icon { font-size: 60px; margin-bottom: 8px; }
+#loteria-result-title {
+    font-family: var(--font-display);
+    font-size: 30px;
+    color: var(--loteria-gold);
+    margin: 0 0 14px;
+    letter-spacing: 0.03em;
+}
+.loteria-result-loss #loteria-result-title { color: #d8cdbe; }
+#loteria-result-text { color: #f0e6d0; font-size: 15px; line-height: 1.6; margin: 0 0 24px; }
+#loteria-result-text strong { color: var(--loteria-gold); }
+#loteria-result-btn {
+    padding: 11px 30px;
+    background: linear-gradient(180deg, var(--loteria-accent), #d4376a);
+    color: #fff;
+    font-weight: 800;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    font-size: 15px;
+    font-family: var(--font-display);
+    transition: filter 0.15s, transform 0.12s;
+}
+#loteria-result-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+</style>
+</head>
+<body>
+    <div id="loteria-inner">
+        <div id="loteria-header">
+            <h2>La Lotería</h2>
+            <span id="loteria-coins-display"></span>
+            <button id="loteria-reset-btn" title="Refill your purse to keep playing">Refill purse</button>
+        </div>
+
+        <div id="loteria-setup">
+            <p class="loteria-tagline">The caller draws cards one by one. Click each card on your tabla before the next is called — miss it and the mark is lost. Complete the announced pattern to win.</p>
+
+            <div class="loteria-setup-row">
+                <span class="loteria-setup-label">Tabla</span>
+                <div id="loteria-tabla-picker" class="loteria-choice-group"></div>
+            </div>
+            <div class="loteria-setup-row">
+                <span class="loteria-setup-label">Pace</span>
+                <div id="loteria-pace-picker" class="loteria-choice-group"></div>
+            </div>
+
+            <div id="loteria-stake-summary"></div>
+            <button id="loteria-start-btn">Buy In &amp; Start the Caller</button>
+            <p id="loteria-setup-note" class="loteria-setup-note"></p>
+        </div>
+
+        <div id="loteria-play" style="display:none;">
+            <div id="loteria-play-top">
+                <div id="loteria-caller-area">
+                    <div class="loteria-caller-label">Now calling</div>
+                    <div id="loteria-current-card">
+                        <div id="loteria-current-glyph">&#127183;</div>
+                        <div id="loteria-current-name">—</div>
+                    </div>
+                    <div id="loteria-current-verse"></div>
+                    <div id="loteria-pace-bar-track"><div id="loteria-pace-bar"></div></div>
+                </div>
+                <div id="loteria-goal-area">
+                    <div class="loteria-goal-label">Win pattern</div>
+                    <div id="loteria-goal-pattern">—</div>
+                    <div id="loteria-goal-mini"></div>
+                    <div id="loteria-progress-note"></div>
+                    <div id="loteria-called-count"></div>
+                </div>
+            </div>
+            <div id="loteria-tablas"></div>
+        </div>
+
+        <div id="loteria-result-overlay" style="display:none;">
+            <div id="loteria-result-card">
+                <div id="loteria-result-icon">&#127183;</div>
+                <h2 id="loteria-result-title"></h2>
+                <p id="loteria-result-text"></p>
+                <button id="loteria-result-btn">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- The pure game engine, shared with The Broken Flagon. No game runtime is
+         loaded — only this self-contained logic file. -->
+    <script src="js/loteria.js"></script>
+    <script>
+    // ═══════════════════════════════════════════════════════════════════════
+    // Standalone UI — drives the engine in js/loteria.js with a local, browser
+    // persisted coin balance. Mirrors the in-game loteria-ui.js behaviour but
+    // depends on nothing from the main game (no gameState, gameMeta, addMessage,
+    // earnFlagonCoins, saveMetaProgress, updateUI).
+    // ═══════════════════════════════════════════════════════════════════════
+    (function () {
+        'use strict';
+
+        const COINS_KEY = 'loteria.standalone.coins';
+        const STARTING_COINS = 500;   // a fresh purse on first visit / refill
+
+        let _round = null;
+        let _setup = { tablaCount: 1, paceId: 'classic' };
+        let _callTimer = null;
+        let _paceRAF = null;
+        let _callStartMs = 0;
+
+        // ── Coin purse (localStorage-backed, independent of the main game) ──
+        function getCoins() {
+            const raw = parseInt(localStorage.getItem(COINS_KEY), 10);
+            if (Number.isFinite(raw) && raw >= 0) return raw;
+            setCoins(STARTING_COINS);
+            return STARTING_COINS;
+        }
+        function setCoins(n) {
+            localStorage.setItem(COINS_KEY, String(Math.max(0, Math.round(n))));
+        }
+        function addCoins(n) { setCoins(getCoins() + n); }
+
+        function renderCoins() {
+            const el = document.getElementById('loteria-coins-display');
+            if (el) el.innerHTML = `<span class="loteria-coin-icon">&#9679;</span> ${getCoins().toLocaleString()} Flagon Coins`;
+        }
+
+        // ── Timers ──
+        function stopTimers() {
+            if (_callTimer) { clearTimeout(_callTimer); _callTimer = null; }
+            if (_paceRAF) { cancelAnimationFrame(_paceRAF); _paceRAF = null; }
+        }
+
+        // ── Setup screen ──
+        function showSetup() {
+            stopTimers();
+            document.getElementById('loteria-setup').style.display = 'block';
+            document.getElementById('loteria-play').style.display = 'none';
+            document.getElementById('loteria-result-overlay').style.display = 'none';
+            renderCoins();
+
+            const tp = document.getElementById('loteria-tabla-picker');
+            tp.innerHTML = '';
+            for (let n = 1; n <= LOTERIA_MAX_TABLA; n++) {
+                const b = document.createElement('button');
+                b.className = 'loteria-choice' + (_setup.tablaCount === n ? ' loteria-choice-active' : '');
+                b.textContent = n;
+                b.onclick = () => { _setup.tablaCount = n; showSetup(); };
+                tp.appendChild(b);
+            }
+
+            const pp = document.getElementById('loteria-pace-picker');
+            pp.innerHTML = '';
+            LOTERIA_PACES.forEach(pace => {
+                const b = document.createElement('button');
+                b.className = 'loteria-choice loteria-choice-pace' + (_setup.paceId === pace.id ? ' loteria-choice-active' : '');
+                b.innerHTML = `<span class="loteria-pace-name">${pace.label}</span><span class="loteria-pace-mult">×${pace.payoutMult} payout</span>`;
+                b.onclick = () => { _setup.paceId = pace.id; showSetup(); };
+                pp.appendChild(b);
+            });
+
+            const stake = _setup.tablaCount * LOTERIA_TABLA_COST;
+            const coins = getCoins();
+            document.getElementById('loteria-stake-summary').innerHTML =
+                `<span>Buy-in: <strong>${stake}</strong> Flagon Coins</span>` +
+                `<span class="loteria-stake-coins">You have ${coins.toLocaleString()}</span>`;
+
+            const startBtn = document.getElementById('loteria-start-btn');
+            const note = document.getElementById('loteria-setup-note');
+            if (coins < stake) {
+                startBtn.disabled = true;
+                startBtn.classList.add('loteria-btn-disabled');
+                note.textContent = `You need ${stake - coins} more Flagon Coins to buy in — use “Refill purse”.`;
+            } else {
+                startBtn.disabled = false;
+                startBtn.classList.remove('loteria-btn-disabled');
+                note.textContent = 'The caller will start once you buy in. Watch closely.';
+            }
+        }
+
+        // ── Start a round (buy in) ──
+        function start() {
+            const stake = _setup.tablaCount * LOTERIA_TABLA_COST;
+            if (getCoins() < stake) return;
+
+            addCoins(-stake);
+            renderCoins();
+
+            _round = startLoteriaRound({ tablaCount: _setup.tablaCount, paceId: _setup.paceId });
+
+            document.getElementById('loteria-setup').style.display = 'none';
+            document.getElementById('loteria-play').style.display = 'block';
+
+            renderGoal();
+            renderTablas();
+
+            _callTimer = setTimeout(advance, 1400);
+        }
+
+        // ── The caller loop ──
+        function advance() {
+            if (!_round || _round.status === 'won' || _round.status === 'lost') return;
+
+            const card = loteriaCallNext(_round);
+            if (!card) { endRound(false); return; }
+
+            _callStartMs = Date.now();
+            const ms = _round.pace.secPerCall * 1000;
+            _round.markableUntil = _callStartMs + ms;
+            renderCurrentCard(card);
+            renderTablas();
+            renderGoal();
+            startPaceBar();
+
+            _callTimer = setTimeout(advance, ms);
+        }
+
+        function startPaceBar() {
+            if (_paceRAF) cancelAnimationFrame(_paceRAF);
+            const bar = document.getElementById('loteria-pace-bar');
+            if (!bar) return;
+            const total = _round.pace.secPerCall * 1000;
+            const step = () => {
+                if (!_round || _round.status !== 'playing') return;
+                const elapsed = Date.now() - _callStartMs;
+                const frac = Math.max(0, Math.min(1, 1 - elapsed / total));
+                bar.style.width = (frac * 100) + '%';
+                bar.style.background = frac < 0.3 ? 'var(--loteria-urgent)' : 'var(--loteria-accent)';
+                if (frac > 0) _paceRAF = requestAnimationFrame(step);
+            };
+            step();
+        }
+
+        // ── Rendering ──
+        function renderCurrentCard(card) {
+            document.getElementById('loteria-current-glyph').textContent = card.glyph;
+            document.getElementById('loteria-current-name').textContent = card.name;
+            document.getElementById('loteria-current-verse').textContent = card.verse || '';
+            const cc = document.getElementById('loteria-current-card');
+            cc.classList.remove('loteria-card-pop'); void cc.offsetWidth; cc.classList.add('loteria-card-pop');
+        }
+
+        function renderGoal() {
+            if (!_round) return;
+            document.getElementById('loteria-goal-pattern').textContent = _round.pattern.label;
+
+            const mini = document.getElementById('loteria-goal-mini');
+            mini.innerHTML = '';
+            const need = new Set(_round.pattern.winSets.flat());
+            for (let i = 0; i < LOTERIA_TABLA_SIZE; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'loteria-mini-cell' + (need.has(i) ? ' loteria-mini-on' : '');
+                mini.appendChild(dot);
+            }
+
+            const note = document.getElementById('loteria-progress-note');
+            const best = loteriaBestProgress(_round);
+            if (best.remaining === 0) note.textContent = '';
+            else if (best.remaining === 1) { note.textContent = '¡Una más! 1 to go!'; note.className = 'loteria-progress-hot'; }
+            else { note.textContent = `${best.remaining} to go`; note.className = ''; }
+
+            document.getElementById('loteria-called-count').textContent = `${_round.called.length} / 54 called`;
+        }
+
+        function renderTablas() {
+            const wrap = document.getElementById('loteria-tablas');
+            if (!_round) return;
+            wrap.innerHTML = '';
+            wrap.className = 'loteria-tablas-count-' + _round.tablas.length;
+
+            _round.tablas.forEach((tabla, t) => {
+                const board = document.createElement('div');
+                board.className = 'loteria-board';
+                tabla.cards.forEach((cardId, c) => {
+                    const card = getLoteriaCard(cardId);
+                    const cell = document.createElement('button');
+                    const isMarked = tabla.marked[c];
+                    const isLive = (_round.currentCardId === cardId) && !isMarked && _round.status === 'playing';
+                    cell.className = 'loteria-cell' +
+                        (isMarked ? ' loteria-cell-marked' : '') +
+                        (isLive ? ' loteria-cell-live' : '');
+                    const artSrc = `sprites/loteria/${cardId}.png`;
+                    cell.innerHTML =
+                        `<span class="loteria-cell-glyph">${card.glyph}</span>` +
+                        `<span class="loteria-cell-name">${card.name}</span>` +
+                        `<img class="loteria-cell-art" src="${artSrc}" alt="" draggable="false"` +
+                        ` onload="this.closest('.loteria-cell').classList.add('loteria-cell-hasart');"` +
+                        ` onerror="this.remove();">` +
+                        (isMarked ? '<span class="loteria-bean" aria-hidden="true">&#128997;</span>' : '');
+                    cell.onclick = () => cellClick(t, c);
+                    board.appendChild(cell);
+                });
+                wrap.appendChild(board);
+            });
+        }
+
+        // ── Marking (the skill mechanic) ──
+        function cellClick(tablaIdx, cellIdx) {
+            if (!_round || _round.status !== 'playing') return;
+            if (loteriaMark(_round, tablaIdx, cellIdx)) {
+                renderTablas();
+                renderGoal();
+                if (loteriaCheckWin(_round)) endRound(true);
+            }
+        }
+
+        // ── End of round ──
+        function endRound(won) {
+            stopTimers();
+            const overlay = document.getElementById('loteria-result-overlay');
+            const icon = document.getElementById('loteria-result-icon');
+            const title = document.getElementById('loteria-result-title');
+            const text = document.getElementById('loteria-result-text');
+            const card = document.getElementById('loteria-result-card');
+
+            if (won) {
+                const payout = _round.payout;
+                if (payout > 0) addCoins(payout);
+                card.className = 'loteria-result-win';
+                icon.innerHTML = '&#127881;';
+                title.textContent = '¡Lotería!';
+                text.innerHTML =
+                    `You completed <strong>${_round.pattern.label}</strong> and won ` +
+                    `<strong>${payout.toLocaleString()} Flagon Coins</strong>.`;
+            } else {
+                card.className = 'loteria-result-loss';
+                icon.innerHTML = '&#128533;';
+                title.textContent = 'The deck ran out';
+                text.innerHTML =
+                    `No one completed <strong>${_round.pattern.label}</strong> this round. ` +
+                    `Better luck next time — the caller is ready to go again.`;
+            }
+            renderCoins();
+            overlay.style.display = 'flex';
+        }
+
+        function resultContinue() {
+            document.getElementById('loteria-result-overlay').style.display = 'none';
+            _round = null;
+            showSetup();
+        }
+
+        // ── Refill purse (keeps the standalone self-sufficient) ──
+        function refillPurse() {
+            if (getCoins() >= STARTING_COINS) return;   // only top up when low
+            setCoins(STARTING_COINS);
+            renderCoins();
+            showSetup();
+        }
+
+        // ── Wire up ──
+        function init() {
+            if (typeof startLoteriaRound !== 'function') {
+                document.getElementById('loteria-inner').innerHTML =
+                    '<p style="color:#ff7a7a;font-family:monospace;padding:20px;">' +
+                    'Could not load the Lotería engine (js/loteria.js). Serve this page from the ' +
+                    'project folder (e.g. <code>python3 -m http.server</code>) so the script can load.</p>';
+                return;
+            }
+            document.getElementById('loteria-start-btn').onclick = start;
+            document.getElementById('loteria-result-btn').onclick = resultContinue;
+            document.getElementById('loteria-reset-btn').onclick = refillPurse;
+            showSetup();
+        }
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+        else init();
+    })();
+    </script>
+</body>
+</html>
