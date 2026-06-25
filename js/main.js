@@ -16,6 +16,7 @@ function initGame(className, subclassId = null, characterName = '', seedOverride
     gameState.bardOpen = false;
     gameState.stashOpen = false;
     gameState.magicDealerOpen = false;
+    gameState.loteriaOpen = false;
     gameState.cellarFindOpen = false;
     // ── Missing resets (fields added after v1.9) ──────────────────────────
     gameState.spellbookOpen  = false;
@@ -212,6 +213,56 @@ function openStorybook() {
         parchment.style.animation = 'none';
         parchment.offsetHeight; // force reflow
         parchment.style.animation = 'sb-unfurl 0.45s cubic-bezier(0.34, 1.4, 0.64, 1) forwards';
+    }
+
+    // Scroll-reveal: each chapter rises into view as you scroll, so the legend
+    // unfolds rather than landing all at once. We re-arm it every open by
+    // clearing the revealed state first, then observing.
+    _armStorybookReveal();
+}
+
+// Sets up the per-chapter scroll reveal. Idempotent — disconnects any prior
+// observer and resets reveal state so reopening the book replays the unfold.
+let _sbRevealObserver = null;
+function _armStorybookReveal() {
+    const scroll = document.getElementById('storybook-scroll');
+    if (!scroll) return;
+    const blocks = scroll.querySelectorAll('.sb-chapter, .sb-ending');
+
+    // Safety: if anything below throws, reveal everything so the legend can
+    // never be left invisible (the chapters start at opacity:0 by design).
+    try {
+        // Reduced-motion or no IntersectionObserver: just show everything.
+        const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reduce || typeof IntersectionObserver === 'undefined') {
+            blocks.forEach(b => b.classList.add('sb-revealed'));
+            return;
+        }
+
+        if (_sbRevealObserver) _sbRevealObserver.disconnect();
+        blocks.forEach(b => b.classList.remove('sb-revealed'));
+
+        _sbRevealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('sb-revealed');
+                    _sbRevealObserver.unobserve(entry.target); // reveal once, then stop watching
+                }
+            });
+        }, { root: scroll, threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
+
+        blocks.forEach(b => _sbRevealObserver.observe(b));
+
+        // The first chapter is already in view on open — reveal it immediately
+        // so there's no awkward blank beat before the reader scrolls.
+        requestAnimationFrame(() => {
+            if (blocks[0]) {
+                blocks[0].classList.add('sb-revealed');
+                _sbRevealObserver.unobserve(blocks[0]);
+            }
+        });
+    } catch (e) {
+        blocks.forEach(b => b.classList.add('sb-revealed'));
     }
 }
 
@@ -1837,6 +1888,7 @@ applyAudioSettings();
 if (typeof setAmbientEnabled === 'function') setAmbientEnabled(gameSettings.ambientEnabled !== false);
 
 _updateTitleResumeBanner();
+if (typeof _updateTitleWelcomeGoals === 'function') _updateTitleWelcomeGoals();
 
 renderLegend();
 
@@ -2070,6 +2122,7 @@ document.addEventListener('keydown', event => {
             if (gameState.bardOpen) { closeBard(); return; }
             if (gameState.stashOpen) { closeStash(); return; }
             if (gameState.magicDealerOpen) { closeMagicDealer(); return; }
+            if (gameState.loteriaOpen) { closeLoteria(); return; }
             if (gameState.cellarFindOpen) { closeCellar(); return; }
             if (gameState.blacksmithOpen) { closeBlacksmith(); return; }
             if (gameState.trainerOpen) { closeTrainer(); return; }
@@ -2105,6 +2158,7 @@ document.addEventListener('keydown', event => {
         if (gameState.bardOpen) return;
         if (gameState.stashOpen) return;
         if (gameState.magicDealerOpen) return;
+        if (gameState.loteriaOpen) return;
         if (gameState.cellarFindOpen) return;
         if (gameState.blacksmithOpen) return;
         if (gameState.trainerOpen) return;

@@ -117,6 +117,7 @@ function interactInTavern() {
         if (isAdjacentToTrainer())    { openTrainer();     return; }
         if (isAdjacentToBank())       { openBank();        return; }
         if (isAdjacentToQuestBoard()) { openNoticeBoard(); return; }
+        if (isAdjacentToLoteria())    { openLoteria();     return; }
         if (isAdjacentToMagicDealer()){ openMagicDealer(); return; }
         addMessage('The Market stalls line the walls. Browse the vendors or head south to The Pit.');
         updateUI();
@@ -1369,6 +1370,11 @@ function openCasinoGame(game) {
         if (res) res.textContent = '';
         const coin = document.getElementById('coin-display');
         if (coin) { coin.textContent = '⊙'; coin.className = ''; }
+    } else if (game === 'lottery') {
+        _showCasinoScreen('lottery');
+        const titleEl = document.getElementById('casino-title');
+        if (titleEl) titleEl.innerHTML = '<span class="panel-icon">&#127915;</span> Weekly Lottery';
+        if (typeof openLotteryRoom === 'function') openLotteryRoom();
     }
     _syncGamblingGold();
 }
@@ -1376,7 +1382,8 @@ function openCasinoGame(game) {
 
 function _showCasinoScreen(screen) {
     const screens = ['casino-lobby', 'casino-dice-screen', 'casino-wheel-screen',
-                     'casino-cards-screen', 'casino-slots-screen', 'casino-coinflip-screen'];
+                     'casino-cards-screen', 'casino-slots-screen', 'casino-coinflip-screen',
+                     'casino-lottery-screen'];
     const map = {
         lobby:    'casino-lobby',
         dice:     'casino-dice-screen',
@@ -1384,6 +1391,7 @@ function _showCasinoScreen(screen) {
         cards:    'casino-cards-screen',
         slots:    'casino-slots-screen',
         coinflip: 'casino-coinflip-screen',
+        lottery:  'casino-lottery-screen',
     };
     screens.forEach(id => {
         const el = document.getElementById(id);
@@ -2660,6 +2668,11 @@ function enchantItem(inventoryIndex) {
 function isAdjacentToMagicDealer() {
     return getDistance(gameState.player.x, gameState.player.y,
         gameState.magicDealer.x, gameState.magicDealer.y) <= 1;
+}
+
+function isAdjacentToLoteria() {
+    return gameState.loteriaCaller && getDistance(gameState.player.x, gameState.player.y,
+        gameState.loteriaCaller.x, gameState.loteriaCaller.y) <= 1;
 }
 
 

@@ -620,6 +620,39 @@ function _updateTitleResumeBanner() {
     set('tr-gold-str',   `${summary.gold} Gold`);
 }
 
+// Show a returning player their personalized "next goals" on the title screen
+// when there's no mid-dungeon run to resume. This surfaces the game's existing
+// getNextGoals() list at the moment of return — the "I have a list of things I
+// want to do next time" feeling — instead of leaving it buried in-game.
+function _updateTitleWelcomeGoals() {
+    const card = document.getElementById('title-welcome-goals');
+    if (!card) return;
+
+    // Don't compete with the resume banner — if a run is resumable, that takes
+    // priority (the player's mid-adventure, not between runs).
+    if (typeof hasSavedRun === 'function' && hasSavedRun()) { card.style.display = 'none'; return; }
+
+    // Only greet players who actually have progress; a brand-new player has
+    // nothing to "return" to and should just start.
+    const hasProgress = (gameState.bestFloor || 0) > 0 || (gameMeta.tavernRenown || 0) > 0;
+    if (!hasProgress) { card.style.display = 'none'; return; }
+
+    const goals = (typeof getNextGoals === 'function') ? getNextGoals() : [];
+    if (!goals.length) { card.style.display = 'none'; return; }
+
+    const list = document.getElementById('twg-list');
+    if (list) {
+        const safe = (typeof safeColor === 'function') ? safeColor : (c) => c;
+        const esc  = (typeof escHtml === 'function') ? escHtml : (s) => s;
+        list.innerHTML = goals.map(g =>
+            `<div class="twg-goal">` +
+            `<span class="twg-goal-icon" style="color:${safe(g.color)}">${g.icon}</span>` +
+            `<span class="twg-goal-text">${esc(g.label)}</span></div>`
+        ).join('');
+    }
+    card.style.display = 'block';
+}
+
 
 // ── Meta progress (bestFloor + stash + tavern upgrades bundled) ────────────────
 
@@ -698,6 +731,8 @@ function loadMetaProgress() {
                     if (meta.meta.casinoJackpot != null) gameMeta.casinoJackpot = meta.meta.casinoJackpot;
                     if (meta.meta.casinoJackpotLastClaimed != null) gameMeta.casinoJackpotLastClaimed = meta.meta.casinoJackpotLastClaimed;
                     if (meta.meta.casinoJackpotLastBumped != null) gameMeta.casinoJackpotLastBumped = meta.meta.casinoJackpotLastBumped;
+                    if (meta.meta.lottery != null) gameMeta.lottery = meta.meta.lottery;
+                    gameMeta.lotteryGrandWon = !!meta.meta.lotteryGrandWon;
                     if (meta.meta.casinoWheelSpins != null) gameMeta.casinoWheelSpins = meta.meta.casinoWheelSpins;
                     if (meta.meta.casinoWheelBigWins != null) gameMeta.casinoWheelBigWins = meta.meta.casinoWheelBigWins;
                     if (meta.meta.tavernRenown != null) gameMeta.tavernRenown = meta.meta.tavernRenown;

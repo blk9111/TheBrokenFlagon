@@ -15,9 +15,11 @@
 
 // ── Version & changelog ───────────────────────────────────────────────────
 // Newest first. Keep entries terse — one line, what changed and why.
-const BOT_VERSION = '2.4.0';
+const BOT_VERSION = '2.4.2';
 const BOT_BUILD_DATE = '2026-06-25';
 const BOT_CHANGELOG = [
+    ['2.4.2', 'Fix mis-scaled "huge blurry tiles" canvas after returning to Full display — force a clean backing-store re-fit when the canvas stage is shown again'],
+    ['2.4.1', 'Minimap/Headless display now hides the whole canvas stage, not just the canvas — fixes the empty dark "big map" area that remained behind the dashboard'],
     ['2.4.0', 'Crash-proof run persistence (localStorage, survives reload/crash); 💾 Download CSV; loop-batch mode for overnight runs'],
     ['2.3.1', 'Ability cooldown (bot-only) to stop spam loops at the source; cooldown configurable'],
     ['2.3.0', 'Wall-clock stall watchdog (configurable) — escapes stuck floors in ~30s instead of ~5min'],
@@ -373,6 +375,36 @@ let _renderTick  = 0;
 // The main-canvas suppression is done via window._botSkipRender, which gameLoop
 // in ui.js checks each frame.
 let _displayMode = 'full';
+// Hide/show the WHOLE canvas stage (the big-map area), used by the display
+// modes below. Hiding the <canvas> alone leaves #canvas-stage — a flex:1 padded
+// container — occupying the center and showing the dark page background, which
+// looks like the big map never went away. We collapse the stage so minimap/
+// headless mode truly clears that area. Falls back to hiding just the canvas if
+// the stage element isn't found. Idempotent (only writes when the value differs).
+function _botSetStageHidden(hidden) {
+    if (typeof document === 'undefined') return;
+    const stage = document.getElementById('canvas-stage');
+    const gc = document.getElementById('game-canvas');
+    if (stage) {
+        const want = hidden ? 'none' : '';
+        if (stage.style.display !== want) stage.style.display = want;
+    }
+    // Keep the canvas's own visibility in sync too (covers the no-stage fallback
+    // and any layout that reads the canvas directly).
+    if (gc) {
+        const wantVis = hidden ? 'hidden' : '';
+        if (gc.style.visibility !== wantVis) gc.style.visibility = wantVis;
+    }
+    // When SHOWING the stage again, the canvas may have been sized against a
+    // collapsed (display:none → 0×0) layout, leaving its backing store at the
+    // wrong scale — the "huge blurry tiles" bug. Force a clean recompute against
+    // the now-correct layout. We do it on the next frame (rAF) so the browser
+    // has settled layout first, then once more immediately for good measure.
+    if (!hidden && typeof window !== 'undefined' && typeof invalidateCanvasSize === 'function') {
+        requestAnimationFrame(() => { try { invalidateCanvasSize(); } catch (_) {} });
+    }
+}
+
 // FPS sampling for the bot HUD — counts main-loop frames over a rolling window.
 let _fpsFrames = 0, _fpsLastStamp = 0, _fpsValue = 0;
 function _botSampleFps() {
@@ -548,6 +580,14 @@ let _dodgeHistory = [];
 let _arenaPendingConfirm = false; // BUG-3: arena step state (prevents double-bet race from setTimeout)      // recent dodge destinations as "x,y" strings (rolling, max 4)
 let _dodgeCount   = 0;       // consecutive dodge actions with no intervening progress
 const MAX_DODGES  = 3;       // cap on consecutive dodges before forcing engagement
+// Arrow-dodge anti-loop: the "step to cover" reaction against a bow-drawing
+// archer had NO cap, so the bot would dodge between the same cover tiles every
+// tick forever while an unreachable archer plinked it — the dominant stall in
+// batch data (~84% of timeouts traced to this). After this many consecutive
+// cover-dodges with no real progress, stop dodging and commit (close+kill, or
+// let the unreachable-blacklist abandon it). Mirrors MAX_DODGES for charges.
+let _arrowDodgeCount = 0;
+const MAX_ARROW_DODGES = 3;
 const MAX_STALL_TICKS = 1200; // ~36s at 30ms turbo, ~2.4min at 120ms normal, before force-kill.
                               // A full large-floor explore is ~200 moves, so this leaves
                               // generous headroom while recovering a truly stuck bot ~3× faster.
@@ -1830,7 +1870,12 @@ function decideDungeon() {
 
             // Archer drawing bow at range: step behind a wall tile if possible.
             // Even one tile of wall between us and the archer blocks the shot.
-            if (intent.label === 'Draw Bow' && dist >= 2) {
+            // BUT cap consecutive cover-dodges — without this the bot oscillates
+            // between cover tiles forever against an archer it can't reach (the
+            // dominant batch-data stall). After MAX_ARROW_DODGES, stop dodging
+            // and fall through to combat: close and kill it, or let the
+            // unreachable-enemy blacklist abandon it so we make progress.
+            if (intent.label === 'Draw Bow' && dist >= 2 && _arrowDodgeCount < MAX_ARROW_DODGES) {
                 const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
                 for (const [dx2,dy2] of dirs) {
                     const nx=p.x+dx2, ny=p.y+dy2;
@@ -1841,6 +1886,7 @@ function decideDungeon() {
                     if (s.dungeon?.[mid.y]?.[mid.x] === 1) {
                         log(`Dodging ${enemy.name} arrow → cover`, 'warn');
                         _wanderLast = `${p.x},${p.y}`;
+                        _arrowDodgeCount++;
                         try { movePlayer?.(dx2, dy2); } catch(_) { stepTo(nx,ny); }
                         return;
                     }
@@ -1848,6 +1894,15 @@ function decideDungeon() {
                 // No cover available (or only cover is where we came from) — stop
                 // trying to dodge and just close on the archer to kill it. Falls
                 // through to the combat block below.
+            } else if (intent.label === 'Draw Bow' && dist >= 2) {
+                // Hit the dodge cap — stop reacting to the bow and commit. Log
+                // once so the data shows we deliberately stopped dodging rather
+                // than silently changing behavior.
+                if (_arrowDodgeCount === MAX_ARROW_DODGES) {
+                    log(`Done dodging ${enemy.name} — committing to engage`, 'warn');
+                    _arrowDodgeCount++; // bump past the cap so this logs only once
+                }
+                // fall through to combat / unreachable handling below
             }
         }
     }
@@ -1995,6 +2050,7 @@ function decideDungeon() {
         // We're committing to combat — clear dodge anti-loop state so a future
         // wind-up gets a fresh dodge budget once this fight resolves.
         _dodgeCount = 0; _dodgeHistory = [];
+        _arrowDodgeCount = 0; // reached a target = progress; refresh arrow-dodge budget
         goal(`Fighting ${enemy.name} (F${s.floor})`);
         // True adjacency by coordinates. At cardinal distance 1 there's no wall
         // between us and the enemy (no room for one), so attacking is always valid.
@@ -2103,8 +2159,7 @@ function tick() {
     // Idempotent: setting visibility to its current value is a no-op and causes
     // no flicker, so this only acts when something else changed it.
     if (_displayMode !== 'full') {
-        const gc = document.getElementById('game-canvas');
-        if (gc && gc.style.visibility !== 'hidden') gc.style.visibility = 'hidden';
+        _botSetStageHidden(true);
         if (!window._botSkipRender) window._botSkipRender = true;
     }
     try { decide(); } catch(e) { err('tick',e); }
@@ -2236,7 +2291,7 @@ function decide() {
         _unreachableEnemies.clear(); // fresh floor — re-evaluate enemy reachability
         _unreachableStrikes = {};    // fresh floor — clear sticky-unreachable strikes
         _abilityFloorCount = 0;      // fresh floor — reset per-floor ability spam guard
-        _dodgeHistory = []; _dodgeCount = 0; // fresh floor — clear dodge anti-loop state
+        _dodgeHistory = []; _dodgeCount = 0; _arrowDodgeCount = 0; // fresh floor — clear dodge anti-loop state
         if (s.floor > 0 && s.floor > stats.bestFloor) stats.bestFloor = s.floor;
         if (s.floor > 0) log(`Floor ${s.floor}`,'floor');
     }
@@ -3746,7 +3801,7 @@ window._bot = {
             // state you stopped to inspect, even if running in a fast display
             // mode. The chosen _displayMode is re-applied on resume below.
             window._botSkipRender = false;
-            { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = ''; }
+            _botSetStageHidden(false);
             if (typeof draw === 'function') { try { draw(); } catch(_){} }
             log('Paused','info');
         } else {
@@ -3756,7 +3811,7 @@ window._bot = {
             running=true; patchFns();
             // Re-apply the chosen display mode (pause restored full rendering).
             window._botSkipRender = (_displayMode !== 'full');
-            { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = (_displayMode === 'full') ? '' : 'hidden'; }
+            _botSetStageHidden(_displayMode !== 'full');
             tickTimer=setInterval(tick, CFG.tickMs);
             const b=document.getElementById('bot-run-btn');
             if(b){b.textContent='⏸ Pause';b.classList.add('on');}
@@ -3792,12 +3847,12 @@ window._bot = {
         // window._botSkipRender is read by gameLoop() in ui.js each frame to
         // skip the expensive draw() call.
         window._botSkipRender = (mode !== 'full');
-        // Belt-and-suspenders: also hide the main canvas element directly. This
-        // guarantees the "big map" disappears in minimap/headless mode even if
-        // the gameLoop render-skip guard isn't present (e.g. an older ui.js) —
-        // skipping draw() alone only freezes the last frame, it doesn't hide it.
-        const gc = document.getElementById('game-canvas');
-        if (gc) gc.style.visibility = (mode === 'full') ? '' : 'hidden';
+        // Hide the entire canvas STAGE (not just the canvas) in minimap/headless
+        // mode. Hiding only the <canvas> leaves its container — #canvas-stage,
+        // a flex:1 padded box — occupying the whole center showing the dark page
+        // background, which reads as "the big map is still there". Collapsing the
+        // stage removes that empty dark rectangle entirely.
+        _botSetStageHidden(mode !== 'full');
         const idx = { full:0, minimap:1, headless:2 }[mode];
         document.querySelectorAll('.bdp').forEach((b,i)=>b.classList.toggle('on', i===idx));
         // Returning to full: clear the flag, restore the canvas, and force one
@@ -3937,7 +3992,7 @@ window._bot = {
         // Restore the main game render in case the bot was detached while in
         // minimap/headless display mode — otherwise the canvas stays blank.
         window._botSkipRender = false;
-        { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = ''; }
+        _botSetStageHidden(false);
         if (typeof draw === 'function') { try { draw(); } catch(_){} }
         const panel = document.getElementById('bot-panel');
         if (panel) panel.remove();
@@ -4004,7 +4059,7 @@ window._bot = {
         _lastGameOverId = null; _lastExitLogKey = null;
         _abilitySpamCount = 0; _abilityBanned = false;
         _arenaPendingConfirm = false;
-        _dodgeHistory = []; _dodgeCount = 0;
+        _dodgeHistory = []; _dodgeCount = 0; _arrowDodgeCount = 0;
         _unreachableItems.clear(); _unreachableEnemies.clear();
         _unreachableStrikes = {};
         _errRate.count = 0; _errRate.suppressed = 0; _errRate.stamp = 0;

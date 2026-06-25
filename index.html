@@ -99,6 +99,15 @@
                     <button id="title-resume-btn" onclick="resumeRun()">Continue Journey <span aria-hidden="true">&#8594;</span></button>
                 </div>
 
+                <!-- Welcome-back goals — shown for a returning player who has
+                     progress but no mid-dungeon run to resume. Greets them with
+                     their personalized "next goals" list (the logout to-do feeling). -->
+                <div id="title-welcome-goals" style="display:none;">
+                    <div class="twg-eyebrow">Welcome back to the Flagon</div>
+                    <div class="twg-sub" id="twg-sub">Here's what's waiting for you</div>
+                    <div id="twg-list"></div>
+                </div>
+
                 <!-- Primary CTA -->
                 <button id="title-begin-btn" onclick="beginAdventure()">
                     <span aria-hidden="true">&#8592;</span> Descend into the Ash <span aria-hidden="true">&#8594;</span>
@@ -1082,6 +1091,12 @@
                             <div class="casino-game-desc">Call it — Coin or Crown. Fastest bet in the Flagon</div>
                             <div class="casino-game-odds">1.9×</div>
                         </div>
+                        <div class="casino-game-card casino-game-card-lottery" onclick="openCasinoGame('lottery')">
+                            <div class="casino-game-icon">&#127915;</div>
+                            <div class="casino-game-name">Weekly Lottery</div>
+                            <div class="casino-game-desc">Buy tickets, then wait. The draw comes once a week — win big.</div>
+                            <div class="casino-game-odds">Tiered prizes</div>
+                        </div>
                     </div>
                     <p class="shop-hint">ESC or Close to leave the casino</p>
                 </div>
@@ -1192,6 +1207,55 @@
                     </div>
                 </div>
 
+                <!-- ── Weekly Lottery ───────────────────────────────── -->
+                <div id="casino-lottery-screen" style="display:none;">
+                    <button class="casino-back-btn" onclick="openCasinoLobby()">&#8592; Back</button>
+                    <p class="casino-game-subtitle">Buy your tickets, then wait. The draw comes once a week — and only once.</p>
+
+                    <div id="lottery-countdown-box">
+                        <span class="lottery-countdown-label">&#9203; Next draw in</span>
+                        <span id="lottery-countdown" class="lottery-countdown-time">—</span>
+                    </div>
+
+                    <div id="lottery-pending-note" style="display:none;"></div>
+
+                    <div id="lottery-main">
+                        <div id="lottery-tickets-held">
+                            <span class="lottery-tickets-num" id="lottery-tickets-num">0</span>
+                            <span class="lottery-tickets-cap">tickets in this week's draw</span>
+                        </div>
+
+                        <div id="lottery-buy-row">
+                            <label for="lottery-buy-input">Buy</label>
+                            <input type="number" id="lottery-buy-input" min="1" value="1">
+                            <span class="lottery-buy-unit">tickets &times; <span id="lottery-ticket-cost">25</span> coins</span>
+                            <button id="lottery-buy-btn" onclick="buyLotteryTicketsUI()">Buy Tickets</button>
+                        </div>
+                        <p id="lottery-coins-note" class="lottery-coins-note"></p>
+
+                        <div id="lottery-prizes">
+                            <h3 class="lottery-prizes-title">Prize Tiers &amp; Your Odds</h3>
+                            <div id="lottery-prize-list"></div>
+                            <p class="lottery-odds-hint">More tickets, better odds — but the draw is never guaranteed. Honest chances shown above.</p>
+                        </div>
+
+                        <div id="lottery-history" style="display:none;">
+                            <h3 class="lottery-history-title">Past Draws</h3>
+                            <div id="lottery-history-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Lottery result reveal (overlay) ──────────────── -->
+                <div id="lottery-reveal-overlay" style="display:none;">
+                    <div id="lottery-reveal-card">
+                        <div id="lottery-reveal-icon">&#127915;</div>
+                        <h2 id="lottery-reveal-title">The Draw</h2>
+                        <p id="lottery-reveal-text"></p>
+                        <button id="lottery-reveal-btn" onclick="closeLotteryReveal()">Continue</button>
+                    </div>
+                </div>
+
                 <p class="shop-hint" id="casino-hint-bar">ESC or Close to leave the casino</p>
             </div>
         </div>
@@ -1208,6 +1272,64 @@
                 </div>
                 <p class="levelup-prompt">Choose one training bonus</p>
                 <div id="levelup-options"></div>
+            </div>
+        </div>
+
+        <div id="loteria-panel" style="display:none;">
+            <div id="loteria-inner">
+                <div id="loteria-header">
+                    <h2><span class="panel-icon">&#127183;</span> La Lotería</h2>
+                    <span id="loteria-coins-display"></span>
+                    <button onclick="closeLoteria()">&#x2715; Close</button>
+                </div>
+
+                <div id="loteria-setup">
+                    <p class="loteria-tagline">The caller draws cards one by one. Click each card on your tabla before the next is called — miss it and the mark is lost. Complete the announced pattern to win.</p>
+
+                    <div class="loteria-setup-row">
+                        <span class="loteria-setup-label">Tabla</span>
+                        <div id="loteria-tabla-picker" class="loteria-choice-group"></div>
+                    </div>
+                    <div class="loteria-setup-row">
+                        <span class="loteria-setup-label">Pace</span>
+                        <div id="loteria-pace-picker" class="loteria-choice-group"></div>
+                    </div>
+
+                    <div id="loteria-stake-summary"></div>
+                    <button id="loteria-start-btn" onclick="loteriaStart()">Buy In &amp; Start the Caller</button>
+                    <p id="loteria-setup-note" class="loteria-setup-note"></p>
+                </div>
+
+                <div id="loteria-play" style="display:none;">
+                    <div id="loteria-play-top">
+                        <div id="loteria-caller-area">
+                            <div class="loteria-caller-label">Now calling</div>
+                            <div id="loteria-current-card">
+                                <div id="loteria-current-glyph">&#127183;</div>
+                                <div id="loteria-current-name">—</div>
+                            </div>
+                            <div id="loteria-current-verse"></div>
+                            <div id="loteria-pace-bar-track"><div id="loteria-pace-bar"></div></div>
+                        </div>
+                        <div id="loteria-goal-area">
+                            <div class="loteria-goal-label">Win pattern</div>
+                            <div id="loteria-goal-pattern">—</div>
+                            <div id="loteria-goal-mini"></div>
+                            <div id="loteria-progress-note"></div>
+                            <div id="loteria-called-count"></div>
+                        </div>
+                    </div>
+                    <div id="loteria-tablas"></div>
+                </div>
+
+                <div id="loteria-result-overlay" style="display:none;">
+                    <div id="loteria-result-card">
+                        <div id="loteria-result-icon">&#127183;</div>
+                        <h2 id="loteria-result-title"></h2>
+                        <p id="loteria-result-text"></p>
+                        <button id="loteria-result-btn" onclick="loteriaResultContinue()">Play Again</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1355,6 +1477,9 @@
     <script src="js/save.js"></script>
     <script src="js/main.js"></script>
     <script src="js/treasury.js"></script>
+    <script src="js/lottery.js"></script>
+    <script src="js/loteria.js"></script>
+    <script src="js/loteria-ui.js"></script>
     <script src="js/profile.js"></script>
     <script src="js/trophy-hall.js"></script>
     <script src="js/stable.js"></script>

@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.13.0';
+const GAME_VERSION = '1.14.0';
 
 const DUNGEON_NAME = 'The Dungeon of Ash';
 
@@ -591,6 +591,7 @@ const gameState = {
     trainer: { x: 12, y: 4, name: 'Trainer' },
     bank: { x: 4, y: 4, name: 'Bank' },
     questBoard: { x: 4, y: 13, name: 'Quest Board' },
+    loteriaCaller: { x: 8, y: 13, name: 'Lotería Caller' },
     dungeonEntrance: { x: EXIT_X, y: EXIT_Y, name: 'Dungeon Entrance' },
     gambler: { x: 5, y: 14, name: 'Dice Table' },
     brewmaster: { x: 18, y: 14, name: 'Brewmaster' },
@@ -982,6 +983,10 @@ let gameMeta = {
     casinoJackpotLastClaimed: null,
     casinoWheelSpins: 0,
     casinoWheelBigWins: 0,
+    // Weekly lottery (see lottery.js). Persisted so the real-time week-long
+    // wait survives across sessions — the whole point of the mechanic.
+    lottery: null,
+    lotteryGrandWon: false,
     stats: {
         totalKills: 0,
         slimeKills: 0,
@@ -1447,6 +1452,8 @@ const EARNED_TITLES = [
       test: () => (gameMeta.totalGold || 0) >= 50000 },
     { id: 'survivor',     name: 'The Survivor',       desc: 'Complete 25 runs.',
       test: () => (gameMeta.runs || 0) >= 25 },
+    { id: 'fortunesChosen', name: 'Fortune\u2019s Chosen', desc: 'Win the Grand Prize in the weekly lottery.',
+      test: () => !!gameMeta.lotteryGrandWon },
 ];
 
 // Returns { earned: [...], locked: [...] } evaluating every title's predicate.
@@ -2206,6 +2213,7 @@ const MARKET_INTERACTABLES = [
     { key: 'trainer',     verb: 'Train with', label: 'Trainer',      color: '#58c26d' },
     { key: 'bank',        verb: 'Use the',    label: 'Bank',         color: '#ffd65a' },
     { key: 'questBoard',  verb: 'Read the',   label: 'Quest Board',  color: '#d4b97a' },
+    { key: 'loteriaCaller', verb: 'Play',     label: 'Lotería',      color: '#ff5e8a' },
     { key: 'magicDealer', verb: 'Visit',      label: 'Magic Dealer', color: '#9c6dff' },
 ];
 
@@ -2497,6 +2505,16 @@ const STATUS_META = {
 // Entries are short, player-facing summaries; the manual's Version History
 // section carries the fuller writeup. Most recent first.
 const CHANGELOG = [
+    {
+        version: '1.14.0',
+        highlights: [
+            'Two new games of chance in the tavern district. The Casino now hosts a weekly Lottery — buy tickets with Flagon Coins for a shot at a tiered prize and the title "Fortune\\u2019s Chosen," drawn fresh each week.',
+            'La Loter\\u00eda comes to the market. A caller works a stall in the courtyard, drawing the 54 traditional cards one by one — mark them on your tabla before the next is called, complete the announced pattern, and call ¡Loter\\u00eda! Pick your pace; faster calling pays more.',
+            'A returning hero is greeted at the door. The title screen now welcomes you back with your personal list of next goals — the boss waiting at the next depth, your next arena rank, the renown and creatures still to claim.',
+            'Both games of chance tuned to feed the economy rather than break it — wins are a genuine reward, not a coin fountain.',
+        ],
+        note: 'The reasons to return.',
+    },
     {
         version: '1.13.0',
         highlights: [

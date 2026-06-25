@@ -1595,6 +1595,7 @@ function getAbilityHint() {
     if (gameState.bardOpen) return "ESC: Close Bard's Corner";
     if (gameState.stashOpen) return 'ESC: Close Shared Stash';
     if (gameState.magicDealerOpen) return 'ESC: Close Magic Dealer';
+    if (gameState.loteriaOpen) return 'ESC: Close Lotería';
     // Contextual navigation prompt — when standing next to a tavern point of
     // interest, tell the player exactly what Space will do here.
     if (gameState.floor === 0 && gameState.player && typeof getAdjacentInteractable === 'function') {
@@ -1978,10 +1979,23 @@ function gameLoop() {
         // so nothing (a run restart, a UI rebuild) can flash the big map back on
         // between bot ticks. Idempotent: only writes when the value differs.
         const _gc = (typeof document !== 'undefined') ? document.getElementById('game-canvas') : null;
+        const _stage = (typeof document !== 'undefined') ? document.getElementById('canvas-stage') : null;
         if (window._botSkipRender) {
+            // Hide the whole stage (not just the canvas) so the empty dark area
+            // doesn't read as "the big map is still showing". Idempotent.
+            if (_stage && _stage.style.display !== 'none') _stage.style.display = 'none';
             if (_gc && _gc.style.visibility !== 'hidden') _gc.style.visibility = 'hidden';
         } else {
+            // If the stage was hidden and we're restoring it, the canvas may
+            // have been sized against a 0×0 layout. Detect that exact transition
+            // and force a clean re-fit so it doesn't draw at a broken scale
+            // (the "huge blurry tiles" bug).
+            const _wasHidden = _stage && _stage.style.display === 'none';
+            if (_wasHidden) _stage.style.display = '';
             if (_gc && _gc.style.visibility === 'hidden') _gc.style.visibility = '';
+            if (_wasHidden && typeof invalidateCanvasSize === 'function') {
+                try { invalidateCanvasSize(); } catch (_) {}
+            }
             draw();
         }
     } catch (err) {

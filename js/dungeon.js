@@ -724,6 +724,7 @@ function generateCourtyard() {
     // Walls at y=15, flipped. Vendor at y=13; player at y=12 (distance 1).
     // Center (x=9-17) intentionally left open for The Pit approach lane.
     hw(15, 2, 5);   // QuestBoard stall (vendor: 4,13)
+    hw(15, 7, 9);   // Lotería stall   (caller: 8,13) — left of the Pit lane
     hw(15, 18, 22); // Blacksmith stall (vendor: 20,13)
     // Magic Dealer (12,13): no south wall — Pit access corridor stays clear
 }

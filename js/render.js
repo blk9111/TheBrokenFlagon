@@ -266,6 +266,17 @@ function resizeCanvasForDPI() {
     ctx.imageSmoothingQuality = 'high';
 }
 
+// Force the next resizeCanvasForDPI() to recompute the backing store even if the
+// displayed size looks unchanged. Needed after the canvas was hidden
+// (display:none → 0×0 layout) and shown again, which can otherwise leave a stale
+// cached signature and a mis-scaled backing store (the "huge blurry tiles" bug).
+function invalidateCanvasSize() {
+    _lastDprSig = null;
+    if (typeof resizeCanvasForDPI === 'function') {
+        try { resizeCanvasForDPI(); } catch (_) {}
+    }
+}
+
 // Recompute on viewport changes. Debounced via rAF so a drag-resize doesn't
 // thrash the backing store allocation.
 let _resizeRaf = null;
@@ -4451,6 +4462,7 @@ function drawMarketDetails() {
     // South row vendors
     drawHubNpc(gameState.blacksmith, '#c45c00', 'BLACKSMITH','blacksmith');
     drawHubNpc(gameState.magicDealer,'#9c6dff', 'ARCANE',    'magicDealer');
+    if (gameState.loteriaCaller) drawHubNpc(gameState.loteriaCaller, '#ff5e8a', 'LOTERÍA', 'loteriaCaller');
     drawNoticeBoard();
     // Market sign at the top center
     const mx = 12 * TILE_SIZE + TILE_SIZE / 2;
