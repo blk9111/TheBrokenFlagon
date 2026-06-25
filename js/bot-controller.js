@@ -15,9 +15,15 @@
 
 // ── Version & changelog ───────────────────────────────────────────────────
 // Newest first. Keep entries terse — one line, what changed and why.
-const BOT_VERSION = '2.6.0';
+const BOT_VERSION = '2.11.0';
 const BOT_BUILD_DATE = '2026-06-25';
 const BOT_CHANGELOG = [
+    ['2.11.0', 'Navigation fix — eliminates the two dominant floor-timeout stalls: (1) frontier BFS failure: nearestUnexplored() found a tile the bot flood-filled to but A* could not path to (1-tile chokepoints, diagonal gaps) — now escalates immediately to revealAll + forceWander instead of silently returning; (2) exit-blocked streak: when the exit is visible but BFS can\'t reach it for 60 consecutive ticks, forceWander is called each tick and after the cap _stallDescendOrEnd skips the floor — previously the bot looped doing nothing until the full 2500-tick budget burned. Both fixes should sharply reduce the 92% timeout rate seen in 274 batch runs and push the floor ceiling past 20 in completion mode'],
+    ['2.10.0', 'Completion mode — a legitimate floor-100 clear attempt as proof-of-completability ("if a bot can clear 100 floors, a human can"). _bot.complete() starts a single focused run that must CLEAR or DIE: floor-skipping (stall-descent) is disabled so a clear cannot be faked, per-floor and run budgets are 4× larger so a genuine clear has time to play out, and survival thresholds are conservative (heal at 65%, flee at 35%) since one death ends a ~100-floor attempt. Auto-restarts retry the same pinned build. Defaults to warrior/knight (most survivable in batch data); pass a class/subclass to override. _bot.stopComplete() restores balance-mode config. Power-scaling analysis suggests F100 is survivable: player offense outscales enemy defense with depth while incoming damage stays manageable — the open question is attrition, which this mode is built to test'],
+    ['2.9.0', 'Stall-descent recovery — fixes the ~93% timeout rate that was contaminating balance data. Previously a run that hit one floor it could not resolve in time ended the WHOLE run as a "timeout" at that floor (most runs ended at F3-4 not because the bot capped there, but because it got guillotined on the first hard floor). Now all three timeout triggers (watchdog, floor-budget, run-stall) first try to force-descend past the stuck floor and keep the run going, with fresh timers and cleared navigation blacklists. Capped at 6 skipped floors per run so a broken run still terminates. Run depth now reflects how far the bot can actually get rather than where it first stalled — far better signal for class/floor balance tuning'],
+    ['2.8.0', 'Code-quality pass from an external review. (1) GameAPI — the bot now starts runs through window.GameAPI.startRun() instead of simulating clicks through the title screen and character-select, so a UI redesign can no longer silently break run-starting; the old DOM-click path stays as a fallback for builds without initGame. (2) Dev-mode error surfacing — _bot.dev() (or window._botDev) makes errors that critical-path code normally swallows (movement, combat) log a full stack trace; _bot.dev(\'throw\') additionally re-throws. Off by default, so production behavior is unchanged. Paired with dungeon.js changes: structuredClone-based floor-cache cloning (less GC pressure than JSON round-trips) and dynamic map centers (derived from MAP_WIDTH/HEIGHT instead of hardcoded 12,8) so resizing the grid no longer draws the world off-center'],
+    ['2.7.1', 'Archer-kiting fix — the dominant remaining stall. Two guards: (1) the bot no longer cover-dodges an archer it has already blacklisted as unreachable, so it stops ping-ponging between cover tiles (the ×62 "Dodging archer arrow" loops) and lets exit-seeking take over; (2) a pursuit cap — if the bot chases a single ranged enemy for 8 ticks without landing a hit (archers reposition to keep their distance), it abandons that archer and heads for the exit instead of being kited across the map away from it (the bot@(7,3) distToExit=27 stalls). Should sharply cut watchdog extractions and de-noise the analytics data'],
+    ['2.7.0', 'Live telemetry: HP timeline upgraded to a dual HP + damage trace (damage dealt above the midline, taken below). New live Decision Trace showing the bot\'s last 14 intent changes with floor + age. New This-Floor live timer with recent per-floor bars (slow floors flagged amber). New Live Standings leaderboard in the Batch tab ranking classes by avg floor / best / survival / kills-per-run, updating mid-batch — click the metric label to cycle'],
     ['2.6.0', 'Smarter play: proactive descend — the bot now heads for the stairs the moment a floor is clear of reachable enemies, instead of loitering until the grind-escape valve fires at 30% of the floor budget. Likely cuts the timeout rate substantially'],
     ['2.5.0', 'Descend-failure diagnostics at the floor watchdog (exit found/reached/standing-on). Per-floor profiler (time, damage, gold, abilities per floor) attached to each run. 📊 Export Analytics — download all runs as structured JSON including per-floor profiles for offline regression analysis'],
     ['2.4.2', 'Fix mis-scaled "huge blurry tiles" canvas after returning to Full display — force a clean backing-store re-fit when the canvas stage is shown again'],
@@ -69,6 +75,15 @@ const CFG = {
     eliteThreatRange: 5,     // tile distance to trigger rage draught
     rageDraughtHpMin: 0.55,  // min HP% to use rage draught offensively
     portalMinLevel:   4,     // min player level to use mage/cleric portal
+    // ── Completion mode (legitimate floor-100 clear attempt) ──────────────
+    // When true, the bot is trying to LEGITIMATELY clear all 100 floors as a
+    // proof-of-completability — "if a bot can do it, a human can". This changes
+    // behavior vs. balance batches: floor-skipping (stall-descent) is DISABLED
+    // so a clear can't be faked, per-floor and run budgets are far larger so a
+    // genuine clear has time to play out, and survival thresholds are more
+    // conservative (heal/flee earlier) since one death ends a 100-floor attempt.
+    // Off by default; enabled via _bot.complete().
+    completionMode: false,
     elixirMinLevel:   6,     // min level to buy alchemist elixir
     alchemistPotMin:  3,     // min potion count before upgrading at alchemist
     // ── Wall-clock stall watchdog ─────────────────────────────────────────
@@ -94,6 +109,26 @@ let errors    = [];
 // (with one console warning). Counter resets each second.
 const _errRate = { count: 0, stamp: 0, suppressed: 0 };
 const ERR_RATE_MAX = 12; // hard ceiling per second
+
+// ── Dev-mode error surfacing ─────────────────────────────────────────────────
+// Many critical-path actions (movement, combat) are wrapped in `catch(_){}` so
+// a single bad tick can't freeze a batch. That resilience is correct in normal
+// use, but it also hides real bugs — a thrown attack/move just vanishes. When
+// _DEV_MODE is on, _devCatch() logs the swallowed error with a full stack trace
+// (and routes it through the existing err() snapshot system) so edge cases are
+// debuggable. Off by default; flip via window._botDev = true in the console, or
+// _bot.dev(true). Production behavior is unchanged when off — the swallow stays
+// silent. The throwOnDevError sub-flag additionally re-throws so the failure is
+// impossible to miss while actively chasing a specific bug.
+let _DEV_MODE = false;
+let _DEV_THROW = false;
+function _devCatch(ctx, e) {
+    if (!_DEV_MODE) return;            // production: stay silent, as before
+    try { err(ctx, e); } catch (_) {} // reuse rate-limit + snapshot + UI log
+    console.error(`[Bot:dev] swallowed in ${ctx}:`, e);
+    if (_DEV_THROW) throw e;           // opt-in hard fail while debugging
+}
+
 let stats     = { runs:0, deaths:0, bestFloor:0, kills:0, gold:0, arenaWins:0, floors:[] };
 
 // ── Batch testing + reporting ─────────────────────────────────────────────
@@ -208,6 +243,16 @@ function recordRunResult(p, floor, outcome) {
     _killFeed.length = 0;
     _runDmgDealt = 0;
     _hpHistory.length = 0;
+    // Reset live-telemetry buffers for the next run.
+    _dmgDealtHistory.length = 0;
+    _dmgTakenHistory.length = 0;
+    _lastDealtTot = 0;
+    _lastTakenTot = 0;
+    _decisionTrace.length = 0;
+    _lastGoalLogged = '';
+    _floorEnterStamp = Date.now();
+    _lastSeenFloor = -1;
+    _floorTimes.length = 0;
     _goldLedger = { startGold:0, kills:0, chests:0, arena:0, other:0, potions:0, rest:0, shop:0, total:0 };
     _lastGold = p.gold || 0;
 }
@@ -277,6 +322,54 @@ function advanceBatch() {
 }
 
 // Force-start a fresh run as a specific class, bypassing the UI menus.
+// ── GameAPI: a clean action surface so the bot doesn't drive the game by
+// simulating DOM clicks ───────────────────────────────────────────────────────
+// The bot historically started runs by clicking through the title screen and
+// character-select (title-begin-btn → class tab → subclass pill → Begin
+// Descent). That couples the bot to specific element IDs and CSS class names, so
+// a UI change (like the class-select redesign) can break the bot silently. The
+// batch path already sidesteps this via initGame(); GameAPI formalizes that into
+// a small, stable contract the bot calls instead of clicking. It degrades
+// gracefully: if the preferred game function is missing (older build), callers
+// fall back to the legacy DOM path, so nothing regresses.
+//
+// Intentionally tiny — only the *actions* the bot needs, not a general wrapper.
+// Reads still come from gameState directly (that's already decoupled).
+const GameAPI = {
+    // True when the canonical programmatic start is available.
+    canStartRun() { return typeof initGame === 'function'; },
+
+    // Start a fresh run as the given class/subclass, bypassing the title and
+    // character-select screens entirely. Returns true on success. This is the
+    // same path forceNewRunAs() uses, lifted to a named contract.
+    startRun(className, subclassId = null, opts = {}) {
+        if (typeof initGame !== 'function') return false;
+        try {
+            const name    = opts.name    ?? 'BOT';
+            const seed     = opts.seed     ?? null;
+            const ironman  = opts.ironman  ?? false;
+            const gender   = opts.gender   ?? 'm';
+            initGame(className, subclassId, name, seed, ironman, gender);
+            // initGame sets up state but leaves the title/select screens visible;
+            // hide them so decide()'s title guard doesn't loop tryStartRun().
+            ['title-screen','game-over','class-select','intro-video-screen']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+            try { stopAshParticles?.(); } catch(_) {}
+            return true;
+        } catch (e) { err('GameAPI.startRun', e); return false; }
+    },
+
+    // Resume an in-progress run that dropped to the title screen (the bot fled
+    // to the tavern). Prefers a real game function if one exists; otherwise the
+    // caller handles the legacy button click.
+    resumeRun() {
+        if (typeof continueJourney === 'function') { try { continueJourney(); return true; } catch(e) { err('GameAPI.resumeRun', e); } }
+        if (typeof resumeRun === 'function')        { try { resumeRun();        return true; } catch(e) { err('GameAPI.resumeRun', e); } }
+        return false; // caller falls back to clicking title-resume-btn
+    },
+};
+if (typeof window !== 'undefined') window.GameAPI = GameAPI;
+
 function forceNewRunAs(className) {
     _lastGameOverId  = null;   // fresh run, fresh dedup state
     _lastExitLogKey  = null;
@@ -287,27 +380,25 @@ function forceNewRunAs(className) {
     _runTickCount    = 0;
     _floorTickCount  = 0;
     _floorEnterMs    = Date.now(); // reset wall-clock watchdog for the new run
+    _stallDescents   = 0;          // fresh stall-descent budget for the new run
     _arenaPendingConfirm = false;
     if (window._bot) window._bot._boughtElixir = false; // reset once-per-run town purchase
     try {
-        const sub = pickSubclassForRun(className, batch.runIdx);
-        if (typeof initGame === 'function') {
-            initGame(className, sub, 'BOT', null, false);
-            // initGame sets up the game state but does NOT hide the title screen
-            // (that's beginAdventure's job, which we bypass). Hide it ourselves,
-            // otherwise the decide() title-screen guard sees it visible and fires
-            // tryStartRun() every tick — which does nothing during a batch —
-            // deadlocking the whole batch. Also hide game-over and class-select.
-            const hide = id => { const el=document.getElementById(id); if(el) el.style.display='none'; };
-            hide('title-screen');
-            hide('game-over');
-            hide('class-select');
-            hide('intro-video-screen');
-            try { stopAshParticles?.(); } catch(_) {}
+        // In completion mode, keep retrying the same pinned build (a focused
+        // floor-100 attempt) instead of rotating subclasses like a balance batch.
+        const sub = (CFG.completionMode && _completionClass === className && _completionSub)
+            ? _completionSub
+            : pickSubclassForRun(className, batch.runIdx);
+        if (GameAPI.canStartRun()) {
+            // Use the clean programmatic start instead of clicking through the
+            // UI. GameAPI.startRun() runs initGame and hides the title/select
+            // screens (otherwise decide()'s title guard re-fires tryStartRun
+            // every tick and deadlocks the batch).
+            GameAPI.startRun(className, sub, { name: 'BOT' });
             log(`New run as ${className}/${sub||'base'}`, 'run');
         } else {
-            // BUG-6 fix: initGame missing means the run can never start, deadlocking
-            // the batch silently. Log, error, and advance so the batch keeps running.
+            // initGame missing means the run can never start, deadlocking the
+            // batch silently. Log, error, and advance so the batch keeps running.
             err('forceNewRun', new Error('initGame not found — run skipped'));
             log('initGame not available — skipping run', 'warn');
             if (batch.active) setTimeout(() => advanceBatch(), 100);
@@ -486,6 +577,19 @@ let _runTickCount    = 0;
 const _hpHistory = [];
 const HP_HISTORY_MAX = 200;
 
+// ── Live telemetry state (v2.7) ──────────────────────────────────────────────
+// Per-tick damage deltas plotted under the HP timeline as a dual trace, a
+// rolling decision trace built from goalText changes, and per-floor live timing.
+const _dmgDealtHistory = [];   // per-tick damage the bot dealt
+const _dmgTakenHistory = [];   // per-tick damage the bot took
+let _lastDealtTot = 0;         // previous-tick cumulative damageDelt (for diffing)
+let _lastTakenTot = 0;         // previous-tick cumulative damageTaken
+const _decisionTrace = [];     // [{t, goal, floor}] newest-first
+const DECISION_TRACE_MAX = 14;
+let _lastGoalLogged = '';      // rising-edge guard for the decision trace
+let _floorEnterStamp = 0;      // wall-clock when the current floor began
+let _lastSeenFloor = -1;       // detects floor changes to time them live
+
 // ── Kill feed ─────────────────────────────────────────────────────────────
 // Per-kill log: floor, enemy name, damage dealt. Capped at 60 entries.
 const _killFeed = [];
@@ -623,9 +727,46 @@ const MAX_DODGES  = 3;       // cap on consecutive dodges before forcing engagem
 // let the unreachable-blacklist abandon it). Mirrors MAX_DODGES for charges.
 let _arrowDodgeCount = 0;
 const MAX_ARROW_DODGES = 3;
+// Archer-kiting guard: ranged enemies reposition to keep their distance, so the
+// bot can chase one across the map without ever landing a hit. Track ticks
+// pursuing a single ranged enemy; once it exceeds the cap, blacklist it and head
+// for the exit instead of being kited away from it.
+let _kitePursuit = { key: '', ticks: 0 };
+const KITE_PURSUIT_MAX = 8;
+// Stall-descent recovery: when the bot can't resolve a floor in time, rather than
+// ending the whole run as a "timeout" (which made ~93% of batch runs end early
+// without ever finishing), it force-descends past the stuck floor and keeps
+// going. This converts "timed out on F3" into "skipped a hard floor, reached
+// F6+", producing the deeper, more natural run lengths balance data needs. A cap
+// bounds runtime so a truly broken run still ends. Counts force-descents per run.
+let _stallDescents = 0;
+const MAX_STALL_DESCENTS = 6; // after this many skipped floors in one run, end it
+
+// Counts consecutive ticks where the exit is revealed but BFS can't reach it.
+// When this hits the cap the floor is skipped rather than burning the full budget.
+let _exitUnreachStreak = 0;
+const EXIT_UNREACH_MAX = 60; // ~1.8s turbo / ~7s normal — enough to confirm a blocked exit
+// Completion-mode state (a legitimate floor-100 attempt). _completionSaved holds
+// the balance-mode CFG to restore on stop; _completionClass/Sub pin the build so
+// auto-restarts retry the same attempt; _completionAttempts counts tries.
+let _completionSaved = null;
+let _completionClass = null;
+let _completionSub   = null;
+let _completionAttempts = 0;
 const MAX_STALL_TICKS = 1200; // ~36s at 30ms turbo, ~2.4min at 120ms normal, before force-kill.
                               // A full large-floor explore is ~200 moves, so this leaves
                               // generous headroom while recovering a truly stuck bot ~3× faster.
+
+// Completion mode needs far more patience per floor: a legitimate clear means
+// fully clearing each floor's enemies and exploring for the exit, which can take
+// much longer than the balance-batch budget allows — and a premature timeout
+// would abort an otherwise-successful 100-floor attempt. These accessors return
+// the active budget: the normal value in balance mode, a large multiple in
+// completion mode. Using accessors (not mutation) keeps the Config-panel slider
+// and balance defaults intact.
+const COMPLETION_BUDGET_MULT = 4;
+function _floorBudget() { return CFG.completionMode ? MAX_FLOOR_TICKS * COMPLETION_BUDGET_MULT : MAX_FLOOR_TICKS; }
+function _stallBudget() { return CFG.completionMode ? MAX_STALL_TICKS * COMPLETION_BUDGET_MULT : MAX_STALL_TICKS; }
 
 // ── Pathfinding diagnostics ────────────────────────────────────────────────
 const botPathStats = {
@@ -1550,7 +1691,7 @@ function handleBout() {
         } else { _boutStuckPos = posKey; _boutStuckTicks = 0; }
 
         if (Math.abs(e.x-p.x)+Math.abs(e.y-p.y) === 1) {
-            try { p.attack(e); } catch(_) {}
+            try { p.attack(e); } catch(_e) { _devCatch('bout-attack', _e); }
         } else {
             const slot = bestApproachTile(e.x, e.y);
             if (slot && !(p.x===slot.x && p.y===slot.y)) {
@@ -1753,6 +1894,54 @@ function bestTarget() {
 }
 
 // ── Dungeon turn ──────────────────────────────────────────────────────────
+// When a floor stalls (watchdog / floor-budget / run-stall), try to keep the run
+// alive by force-descending past the problem floor instead of ending the whole
+// run as a timeout. Returns true if it descended (caller should reset timers and
+// continue), false if the run should end now (descent cap hit or descend
+// unavailable). This is the core "make the bot actually finish runs" fix: a run
+// that hits a hard floor now skips it and keeps going, so run depth reflects how
+// far the bot can get rather than where it first got stuck.
+function _stallDescendOrEnd(p, s, reason) {
+    // In completion mode, skipping a floor would FAKE the clear — a stall here is
+    // a genuine failure of the attempt, so never skip; let the run end.
+    if (CFG.completionMode) {
+        log(`Completion attempt failed: stalled on F${s.floor} (${reason}) — no skipping in completion mode`, 'warn');
+        return false;
+    }
+    // Cap how many floors a single run may skip, so a pathologically broken run
+    // still terminates instead of descending forever.
+    if (_stallDescents >= MAX_STALL_DESCENTS) {
+        log(`Run hit ${MAX_STALL_DESCENTS} stall-descents — ending (${reason})`, 'warn');
+        return false;
+    }
+    // Don't skip the final floor — let the normal clear/death logic handle it.
+    const maxFloor = (typeof MAX_DUNGEON_FLOOR !== 'undefined') ? MAX_DUNGEON_FLOOR : 100;
+    if (!s || s.floor >= maxFloor) return false;
+    if (typeof descendFloor !== 'function') return false; // can't skip — end run
+
+    try {
+        const fromFloor = s.floor;
+        // Reveal first (harmless) so the next floor's state is fully initialized
+        // the same way a normal descent would leave it.
+        try { revealAll?.(); } catch (_) {}
+        descendFloor(); // force-advance regardless of standing on the stairs
+        _stallDescents++;
+        // Fresh timers for the new floor so it gets its own full budget.
+        _floorTickCount = 0;
+        _runTickCount   = 0;
+        _floorEnterMs   = Date.now();
+        _abilityBanned  = false;
+        // Clear per-floor navigation blacklists so the new floor starts clean.
+        try { _unreachableEnemies.clear(); _unreachableStrikes = {}; } catch (_) {}
+        _kitePursuit = { key: '', ticks: 0 };
+        log(`Stalled on F${fromFloor} (${reason}) — force-descended to F${s.floor} to keep the run going [skip ${_stallDescents}/${MAX_STALL_DESCENTS}]`, 'warn');
+        return true;
+    } catch (e) {
+        err('stall-descend', e);
+        return false;
+    }
+}
+
 function decideDungeon() {
     const s=gs(), p=pp(); if (!s||!p) return;
 
@@ -1771,7 +1960,7 @@ function decideDungeon() {
             const nx=p.x+dx, ny=p.y+dy;
             const t = s.dungeon?.[ny]?.[nx];
             if (WALKABLE_TILES.has(t) && !(s.enemies||[]).some(e=>e.hp>0&&e.x===nx&&e.y===ny)) {
-                try { p.move(dx,dy); } catch(_) {}
+                try { p.move(dx,dy); } catch(_e) { _devCatch('stair-step-move', _e); }
                 return;
             }
         }
@@ -1788,7 +1977,7 @@ function decideDungeon() {
     // is always findable, then beeline for it. 30% fires well before the hard
     // cap (2500 ticks) and well before the batch-breaking 2500-tick timeout.
     // Only kicks in when healthy enough to disengage.
-    if (_floorTickCount > MAX_FLOOR_TICKS * 0.30 && frac > 0.35) {
+    if (_floorTickCount > _floorBudget() * 0.30 && frac > 0.35) {
         // Reveal first so we can path to the exit even if it's unexplored.
         try { revealAll?.(); } catch(_) {}
         const exitEsc = findTileAny(2);
@@ -1804,8 +1993,8 @@ function decideDungeon() {
             // unreachable (blocked chokepoint, enemy wall). Stop burning the
             // remaining budget and end the run now through the normal timeout
             // path — the diagnostic above will correctly attribute it.
-            if (_floorTickCount > MAX_FLOOR_TICKS * 0.75) {
-                _floorTickCount = MAX_FLOOR_TICKS; // trip the hard budget next check
+            if (_floorTickCount > _floorBudget() * 0.75) {
+                _floorTickCount = _floorBudget(); // trip the hard budget next check
             } else {
                 goal(`Escaping grind — heading to exit (F${s.floor})`);
                 navigate(exitEsc.x, exitEsc.y);
@@ -1853,6 +2042,17 @@ function decideDungeon() {
     if (closeEnemies >= 1 && typeof predictEnemyIntent === 'function') {
         for (const enemy of (s.enemies || [])) {
             if (enemy.hp <= 0 || !s.revealed?.[enemy.y]?.[enemy.x]) continue;
+            // If we've already given up on this enemy as unreachable, do NOT
+            // react to its telegraphs. Dodging an archer we've blacklisted is
+            // the core stall: bestTarget() skips the blacklisted archer so we
+            // never engage it, yet without this guard we'd still cover-dodge its
+            // bow every tick — burning the whole floor budget ping-ponging
+            // between cover tiles (the ×62 "Dodging archer arrow" loops in the
+            // batch logs). Skipping evasion here lets the exit-seeking logic
+            // below take over so the bot actually leaves the floor.
+            if (_unreachableEnemies.has(`${enemy.x},${enemy.y}`)) continue;
+            const ekeyEv = enemy.id || `${enemy.type}@${enemy.x},${enemy.y}`;
+            if ((_unreachableStrikes[ekeyEv] || 0) >= _STICKY_UNREACHABLE_AT) continue;
             const dist = Math.abs(enemy.x-p.x) + Math.abs(enemy.y-p.y);
             if (dist > CFG.intentScanRange) continue;
             let intent;
@@ -2115,26 +2315,65 @@ function decideDungeon() {
     _abilitySpamCount = 0; // any non-ability action resets the spam counter
     const enemy = bestTarget();
     if (enemy) {
+        // ── Archer-kiting guard ────────────────────────────────────────────
+        // Ranged enemies reposition to keep their distance, so the bot can
+        // "successfully approach" one every tick yet never land a hit — it just
+        // chases the archer across the map, often AWAY from the exit (the
+        // bot@(7,3) distToExit=27 stalls in the batch logs). bestApproachTile
+        // returning non-null each tick means the enemy never hits the strike
+        // cap via the normal walled-off path. So track how long we've pursued a
+        // single ranged enemy without an adjacency; once it exceeds the cap,
+        // blacklist it and let the exit-seeking logic take over.
+        const eRange = enemy.range
+            || ((typeof ENEMY_TYPES !== 'undefined' && ENEMY_TYPES[enemy.type]?.range) || 1);
+        const isRanged = eRange >= 2 || enemy.type === 'archer';
+        const eAdjNow = (Math.abs(enemy.x - p.x) + Math.abs(enemy.y - p.y)) === 1;
+        if (isRanged && !eAdjNow) {
+            const pkey = enemy.id || `${enemy.type}`;
+            if (_kitePursuit.key === pkey) {
+                _kitePursuit.ticks++;
+            } else {
+                _kitePursuit = { key: pkey, ticks: 1 };
+            }
+            if (_kitePursuit.ticks > KITE_PURSUIT_MAX) {
+                // Given this archer enough chase. Blacklist it (both coordinate
+                // and sticky strike) so bestTarget skips it, then fall through
+                // to exit-seeking instead of chasing it off the map.
+                _unreachableEnemies.add(`${enemy.x},${enemy.y}`);
+                const kk = enemy.id || `${enemy.type}@${enemy.x},${enemy.y}`;
+                _unreachableStrikes[kk] = _STICKY_UNREACHABLE_AT;
+                _kitePursuit = { key: '', ticks: 0 };
+                log(`${enemy.name} keeps kiting — abandoning to reach the exit`, 'warn');
+                // Don't return; fall through to item/exit/explore below.
+            }
+        } else if (eAdjNow) {
+            _kitePursuit = { key: '', ticks: 0 }; // landed adjacency — reset
+        }
+    }
+    // Re-fetch in case the kiting guard just blacklisted the only target.
+    const target = (enemy && _unreachableEnemies.has(`${enemy.x},${enemy.y}`)) ? bestTarget() : enemy;
+    if (target) {
+        const enemyT = target;
         // We're committing to combat — clear dodge anti-loop state so a future
         // wind-up gets a fresh dodge budget once this fight resolves.
         _dodgeCount = 0; _dodgeHistory = [];
         _arrowDodgeCount = 0; // reached a target = progress; refresh arrow-dodge budget
-        goal(`Fighting ${enemy.name} (F${s.floor})`);
+        goal(`Fighting ${enemyT.name} (F${s.floor})`);
         // True adjacency by coordinates. At cardinal distance 1 there's no wall
         // between us and the enemy (no room for one), so attacking is always valid.
-        const adjacent = (Math.abs(enemy.x-p.x) + Math.abs(enemy.y-p.y)) === 1;
+        const adjacent = (Math.abs(enemyT.x-p.x) + Math.abs(enemyT.y-p.y)) === 1;
         if (adjacent) {
-            try { p.attack(enemy); } catch(e) { err('attack',e); }
+            try { p.attack(enemyT); } catch(e) { err('attack',e); }
             return;
         }
         // Reuse the approach tile bestTarget() already computed for this enemy
         // (cached on the live object) instead of running bestApproachTile —
         // and its ≤4 BFS searches — a second time. Fall back to a fresh search
         // only if the cache is somehow missing (defensive).
-        const slot = enemy._cachedApproach || bestApproachTile(enemy.x, enemy.y);
+        const slot = enemyT._cachedApproach || bestApproachTile(enemyT.x, enemyT.y);
         if (slot) {
             if (p.x === slot.x && p.y === slot.y) {
-                try { p.attack(enemy); } catch(e) { err('attack',e); }
+                try { p.attack(enemyT); } catch(e) { err('attack',e); }
             } else {
                 navigate(slot.x, slot.y);
             }
@@ -2146,13 +2385,13 @@ function decideDungeon() {
         // forever (the exact "attacking through a wall" loop). Blacklist this
         // enemy for a short while and fall through to exploration so the bot
         // makes progress instead of fixating.
-        _unreachableEnemies.add(`${enemy.x},${enemy.y}`);
+        _unreachableEnemies.add(`${enemyT.x},${enemyT.y}`);
         // Count strikes by enemy identity (id if available, else type) so a
         // genuinely walled enemy accumulates strikes across the periodic clears
         // even though its tile coordinates may shift as it patrols in place.
-        const ekey = enemy.id || `${enemy.type}@${enemy.x},${enemy.y}`;
+        const ekey = enemyT.id || `${enemyT.type}@${enemyT.x},${enemyT.y}`;
         _unreachableStrikes[ekey] = (_unreachableStrikes[ekey] || 0) + 1;
-        log(`${enemy.name} unreachable — exploring past it`, 'warn');
+        log(`${enemyT.name} unreachable — exploring past it`, 'warn');
         // fall through (no return) to item/exit/explore logic below
     }
 
@@ -2170,6 +2409,7 @@ function decideDungeon() {
     if (exit) {
         goal(`Heading to exit (F${s.floor})`);
         if (p.x===exit.x && p.y===exit.y) {
+            _exitUnreachStreak = 0;
             // Only record/log the first time we land on the exit tile,
             // not every tick while standing there waiting for a dialog.
             const exitKey = `exit:${s.floor}`;
@@ -2184,7 +2424,23 @@ function decideDungeon() {
                 }
             }
             try { tryStairsInteraction?.(); } catch(e) { err('stairs',e); }
-        } else navigate(exit.x, exit.y);
+        } else {
+            if (navigate(exit.x, exit.y)) {
+                _exitUnreachStreak = 0;
+            } else {
+                // BFS couldn't reach the visible exit — likely a narrow chokepoint
+                // or enemies blocking the only corridor. Wander one step to break
+                // the positional deadlock, then track how long this persists.
+                _exitUnreachStreak++;
+                goal(`Exit blocked — wander attempt ${_exitUnreachStreak}/${EXIT_UNREACH_MAX} (F${s.floor})`);
+                forceWander();
+                if (_exitUnreachStreak >= EXIT_UNREACH_MAX) {
+                    _exitUnreachStreak = 0;
+                    log(`Exit unreachable for ${EXIT_UNREACH_MAX} ticks on F${s.floor} — skipping floor`, 'warn');
+                    if (_stallDescendOrEnd(p, s, 'exit-blocked')) return;
+                }
+            }
+        }
         return;
     }
 
@@ -2192,7 +2448,13 @@ function decideDungeon() {
     const unex = nearestUnexplored();
     if (unex) {
         goal(`Exploring F${s.floor}`);
-        navigate(unex.x, unex.y);
+        if (navigate(unex.x, unex.y)) return;
+        // Frontier found by flood-fill but BFS can't reach it — likely a
+        // 1-tile chokepoint or diagonal-only gap. Reveal the full map now
+        // so the exit might become directly visible next tick, then wander
+        // one step to break any positional deadlock before returning.
+        try { revealAll?.(); } catch(_) {}
+        forceWander();
         return;
     }
 
@@ -2203,6 +2465,15 @@ function decideDungeon() {
         try { revealAll(); } catch(_) {}
         const exit2 = findTileAny(2);
         if (exit2) { goal(`Found exit after reveal (F${s.floor})`); navigate(exit2.x, exit2.y); return; }
+    }
+
+    // All navigation attempts exhausted on this tick — take a random step to
+    // break any positional deadlock before the stall timer fires. The wander
+    // is cheap (one move attempt) and guarantees the bot isn't frozen at a
+    // dead coordinate every tick while the budget drains.
+    if (s.floor > 0) {
+        goal(`Navigation exhausted — wandering (F${s.floor})`);
+        forceWander();
     }
 
     // Nothing left to do. Only attempt a staircase interaction if the player
@@ -2236,6 +2507,32 @@ function tick() {
     if (p && p.maxHp > 0) {
         _hpHistory.push(p.hp / p.maxHp);
         if (_hpHistory.length > HP_HISTORY_MAX) _hpHistory.shift();
+
+        // ── Live telemetry: per-tick damage-dealt / damage-taken deltas ──────
+        // The game accumulates totals in gameState.runStats; we diff against the
+        // previous tick to get a per-tick rate, which the dual-trace graph plots
+        // alongside HP. Cleared between runs in recordRunResult's reset block.
+        const rs = p.runStats || {};
+        const dealtTot = rs.damageDelt || 0;
+        const takenTot = rs.damageTaken || 0;
+        const dealtDelta = Math.max(0, dealtTot - _lastDealtTot);
+        const takenDelta = Math.max(0, takenTot - _lastTakenTot);
+        _lastDealtTot = dealtTot;
+        _lastTakenTot = takenTot;
+        _dmgDealtHistory.push(dealtDelta);
+        _dmgTakenHistory.push(takenDelta);
+        if (_dmgDealtHistory.length > HP_HISTORY_MAX) _dmgDealtHistory.shift();
+        if (_dmgTakenHistory.length > HP_HISTORY_MAX) _dmgTakenHistory.shift();
+
+        // ── Live telemetry: decision trace ──────────────────────────────────
+        // goalText is the bot's current intent, set at every decision branch.
+        // Record a new entry only when it changes (rising edge), so the trace
+        // reads as a sequence of decisions rather than one line repeated.
+        if (goalText !== _lastGoalLogged) {
+            _decisionTrace.unshift({ t: Date.now(), goal: goalText, floor: gs()?.floor ?? 0 });
+            if (_decisionTrace.length > DECISION_TRACE_MAX) _decisionTrace.pop();
+            _lastGoalLogged = goalText;
+        }
     }
     // Auto-throttle: adjust speed based on game phase
     _autoThrottleTick();
@@ -2369,8 +2666,10 @@ function decide() {
         _unreachableItems.clear(); // fresh floor — re-evaluate all item reachability
         _unreachableEnemies.clear(); // fresh floor — re-evaluate enemy reachability
         _unreachableStrikes = {};    // fresh floor — clear sticky-unreachable strikes
+        _exitUnreachStreak  = 0;     // fresh floor — reset exit-blocked streak counter
         _abilityFloorCount = 0;      // fresh floor — reset per-floor ability spam guard
         _dodgeHistory = []; _dodgeCount = 0; _arrowDodgeCount = 0; // fresh floor — clear dodge anti-loop state
+        _kitePursuit = { key: '', ticks: 0 }; // fresh floor — reset archer-kiting pursuit
         if (s.floor > 0 && s.floor > stats.bestFloor) stats.bestFloor = s.floor;
         if (s.floor > 0) log(`Floor ${s.floor}`,'floor');
     }
@@ -2406,13 +2705,15 @@ function decide() {
         log(`Watchdog: ${secs}s real time on F${s.floor} with no progress — extracting`, 'warn');
         log(`  ↳ DESCEND DIAG: ${diag}`, 'warn');
         err('floor-watchdog', new Error(`Floor ${s.floor} watchdog fired after ${secs}s of real time — stuck (no floor change) [${diag}]`));
-        // Reset the timers so we don't immediately re-fire, and record the run.
+        // Reset the timers so we don't immediately re-fire.
         _floorEnterMs = Date.now();
         _runTickCount = 0; _floorTickCount = 0; _abilityBanned = false;
+        // Keep the run alive by skipping the stuck floor, if we can.
+        if (_stallDescendOrEnd(p, s, 'watchdog')) return;
         recordRunResult(p, s.floor, 'timeout');
         _lastGameOverId = Date.now();
         if (batch.active) { advanceBatch(); return; }
-        if (CFG.autoRestart) { forceNewRunAs(p.className || 'warrior'); }
+        if (CFG.autoRestart) { forceNewRunAs(CFG.completionMode && _completionClass ? _completionClass : (p.className || 'warrior')); }
         return;
     }
 
@@ -2424,7 +2725,7 @@ function decide() {
     // single floor forever (endless summons, split loop) is caught here even
     // though the soft timer keeps getting reset by kill activity.
     _floorTickCount++;
-    if (_floorTickCount >= MAX_FLOOR_TICKS) {
+    if (_floorTickCount >= _floorBudget()) {
         _floorTickCount = 0;
         _runTickCount = 0;
         _abilityBanned = false;
@@ -2460,10 +2761,12 @@ function decide() {
         const cause = parts.join('; ');
         log(`Stuck on F${s.floor} for ${MAX_FLOOR_TICKS} ticks (soft timer kept resetting) — force-ending`, 'warn');
         err('floor-timeout', new Error(`Floor ${s.floor} exceeded ${MAX_FLOOR_TICKS}-tick budget — ${cause}`));
+        // Keep the run alive by skipping the stuck floor, if we can.
+        if (_stallDescendOrEnd(p, s, 'floor-budget')) return;
         recordRunResult(p, s.floor, 'timeout');
         _lastGameOverId = Date.now();
         if (batch.active) { advanceBatch(); return; }
-        if (CFG.autoRestart) { forceNewRunAs(p.className || 'warrior'); }
+        if (CFG.autoRestart) { forceNewRunAs(CFG.completionMode && _completionClass ? _completionClass : (p.className || 'warrior')); }
         return;
     }
 
@@ -2477,7 +2780,7 @@ function decide() {
     // Reveal the entire floor and force a fresh path search. This fixes the
     // most common stuck scenario: stairs exist but are in an unrevealed pocket
     // the BFS couldn't reach because of a narrow passage or generation quirk.
-    const HALF_STALL = Math.floor(MAX_STALL_TICKS / 2);
+    const HALF_STALL = Math.floor(_stallBudget() / 2);
     if (_runTickCount === HALF_STALL) {
         log(`Mid-stall recovery on F${s.floor} — revealing map`, 'warn');
         try { revealAll?.(); } catch(_) {}
@@ -2486,17 +2789,19 @@ function decide() {
         if (exit) { stepTo(exit.x, exit.y); return; }
     }
 
-    if (_runTickCount >= MAX_STALL_TICKS) {
+    if (_runTickCount >= _stallBudget()) {
         _runTickCount = 0;
         _abilityBanned = false;
         log(`Run timed out after ${Math.round(MAX_STALL_TICKS * CFG.tickMs / 1000)}s stall on F${s.floor} — force-ending`, 'warn');
         err('stall-timeout', new Error(`No floor/kill progress in ${MAX_STALL_TICKS} ticks on floor ${s.floor}`));
+        // Keep the run alive by skipping the stuck floor, if we can.
+        if (_stallDescendOrEnd(p, s, 'run-stall')) return;
         recordRunResult(p, s.floor, 'timeout');
         // Set the gameOver guard so no other code path double-handles this run,
         // then advance the batch through the single consolidated path.
         _lastGameOverId = Date.now();
         if (batch.active) { advanceBatch(); return; }
-        if (CFG.autoRestart) { forceNewRunAs(p.className || 'warrior'); }
+        if (CFG.autoRestart) { forceNewRunAs(CFG.completionMode && _completionClass ? _completionClass : (p.className || 'warrior')); }
         return;
     }
 
@@ -2575,45 +2880,62 @@ function decide() {
 function tryStartRun() {
     // Resume banner — if a run is already in progress (e.g. the bot fled back
     // to the tavern, which drops to the title screen with a "Continue Journey"
-    // button), click it to resume instead of starting fresh. Without this the
-    // bot freezes on the title screen, never re-entering its own run.
-    // During a batch we DON'T resume — the batch wants a clean new run per
-    // class, started via forceNewRunAs(); resuming would replay the fled run.
+    // button), resume it instead of starting fresh. Without this the bot freezes
+    // on the title screen, never re-entering its own run. During a batch we
+    // DON'T resume — the batch wants a clean new run per class via startRun();
+    // resuming would replay the fled run.
     const resume = document.getElementById('title-resume-btn');
-    if (resume && resume.offsetParent && !batch.active) { resume.click(); return; }
+    if (resume && resume.offsetParent && !batch.active) {
+        // Prefer a real resume function; fall back to clicking the button.
+        if (!GameAPI.resumeRun()) resume.click();
+        return;
+    }
 
-    // Intro video screen — fires when beginAdventure() can't play intro.mp4.
-    // The game shows a fallback and auto-proceeds after 1 s, but clicking Skip
-    // here gets the bot moving immediately rather than waiting the timeout.
+    // ── Preferred path: start a run programmatically via GameAPI ──────────────
+    // When the canonical start (initGame) is available, the bot doesn't need to
+    // click through the title screen and character-select at all — it picks a
+    // class and starts directly. This is the decoupling the review asked for:
+    // no dependence on title-begin-btn / .csn-cls-tab / .csn-begin-btn IDs and
+    // classes, which change when the UI is redesigned. The legacy DOM-click flow
+    // below remains only as a fallback for builds where initGame is missing.
+    const csVisible = (() => {
+        const cs = document.getElementById('class-select');
+        return cs && cs.style.display !== 'none';
+    })();
+    if (GameAPI.canStartRun() && (csVisible || _onTitleScreen())) {
+        const cls = _botPreferredClass();
+        const sub = pickSubclassForRun(cls, stats.runs || 0);
+        if (GameAPI.startRun(cls, sub, { name: 'BOT' })) {
+            log(`Started run as ${cls}/${sub||'base'} via GameAPI`, 'run');
+            return;
+        }
+        // startRun failed — fall through to the legacy DOM path.
+    }
+
+    // ── Legacy fallback: drive the UI by simulating clicks ────────────────────
+    // Only reached if GameAPI.startRun is unavailable or failed. Kept so the bot
+    // still works on older builds without initGame.
     const introSkip = document.getElementById('intro-video-skip-btn');
     if (introSkip && introSkip.offsetParent !== null) { introSkip.click(); return; }
 
-    // Title screen — click begin
     const tb = document.getElementById('title-begin-btn');
     if (tb && tb.offsetParent) { tb.click(); return; }
-    // Character select
     const cs = document.getElementById('class-select');
     if (cs && cs.style.display !== 'none') {
-        // Redesigned character-select (csn- prefix). Class tabs auto-select
-        // their first subclass, so picking a class tab is enough to populate
-        // everything and enable Begin Descent.
         const tabs = document.querySelectorAll('.csn-cls-tab');
         if (tabs.length && !document.querySelector('.csn-cls-tab.on')) {
             try { tabs[0].click(); } catch (_) {}
             return;
         }
-        // A subclass pill is auto-selected on class pick, but click the first
-        // one explicitly if for some reason none is active yet.
         const pills = document.querySelectorAll('.csn-sc-pill');
         if (pills.length && !document.querySelector('.csn-sc-pill.on')) {
             try { pills[0].click(); } catch (_) {}
             return;
         }
-        // Begin Descent
         const beginBtn = document.querySelector('.csn-begin-btn');
         if (beginBtn && !beginBtn.disabled) { beginBtn.click(); return; }
 
-        // ── Legacy fallback for older builds (pre-redesign) ──
+        // ── Older pre-redesign fallback ──
         const cards = document.querySelectorAll('.cs-class-card');
         if (cards.length && !document.querySelector('.cs-class-active')) {
             const first = cards[0];
@@ -2628,6 +2950,23 @@ function tryStartRun() {
         const btn = document.querySelector('.cc-confirm-btn');
         if (btn && !btn.disabled) { btn.click(); return; }
     }
+}
+
+// Is the title screen currently the visible screen? (Used to decide whether the
+// programmatic start applies even before class-select is shown.)
+function _onTitleScreen() {
+    const t = document.getElementById('title-screen');
+    return !!(t && t.style.display !== 'none' && t.offsetParent !== null);
+}
+
+// Which class should an interactive (non-batch) auto-start pick? Honors an
+// explicit CFG.preferredClass if set, else cycles through the roster by run
+// count so repeated solo starts still exercise variety.
+function _botPreferredClass() {
+    const roster = (typeof CLASS_LIST !== 'undefined' && Array.isArray(CLASS_LIST) && CLASS_LIST.length)
+        ? CLASS_LIST : ['warrior','rogue','mage','cleric'];
+    if (CFG.preferredClass && roster.includes(CFG.preferredClass)) return CFG.preferredClass;
+    return roster[(stats.runs || 0) % roster.length];
 }
 
 // ── Game function availability audit ──────────────────────────────────────
@@ -3072,10 +3411,30 @@ function buildPanel() {
     <button class="bdp" onclick="_bot.display('headless')" title="Draw nothing — maximum speed">Headless</button>
     <span id="bot-fps-stat" title="Frames per second of the main render loop"></span>
   </div>
-  <!-- HP sparkline -->
+  <!-- HP + damage dual-trace timeline -->
   <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1a1208">
-    <div style="font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">HP Timeline</div>
-    <canvas id="bot-sparkline" width="440" height="32" style="width:100%;height:32px;display:block;border-radius:3px;background:#080604"></canvas>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span style="font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.05em">HP &amp; Damage</span>
+      <span style="font-size:8px;color:#2a1e10;margin-left:auto">
+        <span style="color:#43a843">—</span>HP &nbsp;
+        <span style="color:#ffc850">▲</span>dealt &nbsp;
+        <span style="color:#e55050">▼</span>taken
+      </span>
+    </div>
+    <canvas id="bot-sparkline" width="440" height="54" style="width:100%;height:54px;display:block;border-radius:3px;background:#080604"></canvas>
+  </div>
+  <!-- Live decision trace -->
+  <div id="bot-trace-wrap" style="margin-top:8px;padding-top:8px;border-top:1px solid #1a1208">
+    <div style="font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Decision Trace</div>
+    <div id="bot-trace" style="max-height:120px;overflow-y:auto;scrollbar-width:thin;font-size:10px"></div>
+  </div>
+  <!-- Live floor timing -->
+  <div id="bot-floortime-wrap" style="margin-top:8px;padding-top:8px;border-top:1px solid #1a1208">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span style="font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.05em">This Floor</span>
+      <span id="bot-floortime-cur" style="font-size:10px;color:#c8922a;margin-left:auto;font-variant-numeric:tabular-nums">0.0s</span>
+    </div>
+    <div id="bot-floortime-bars" style="display:flex;align-items:flex-end;gap:2px;height:34px"></div>
   </div>
   <!-- Kill feed -->
   <div id="bot-killfeed-wrap" style="margin-top:8px;padding-top:8px;border-top:1px solid #1a1208;display:none">
@@ -3121,6 +3480,15 @@ function buildPanel() {
 
 <!-- ── BATCH PANE ─────────────────────────────────── -->
 <div id="bp-batch" class="bpane">
+  <!-- Live class leaderboard — ranks by avg floor, updates mid-batch -->
+  <div id="bot-leaderboard-wrap" style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #1a1208">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.05em">Live Standings</span>
+      <span id="bot-leaderboard-metric" style="font-size:8px;color:#2a1e10;margin-left:auto;cursor:pointer"
+        onclick="_bot.cycleLeaderMetric()" title="Click to change metric">by avg floor ▾</span>
+    </div>
+    <div id="bot-leaderboard"></div>
+  </div>
   <div class="bbat-head">Progress by class</div>
   <div id="bot-batch-rows"></div>
   <div id="bot-batch-total">
@@ -3471,9 +3839,140 @@ function cap(s) { return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 const CLS_ICON = { warrior:'⚔', rogue:'🗡', mage:'🔮', cleric:'✝' };
 const CLS_COLOR = { warrior:'#c8922a', rogue:'#58c26d', mage:'#7bb0ff', cleric:'#e0c0ff' };
 
+// ── Live telemetry renderer (v2.7) ───────────────────────────────────────────
+// Drives four live panels off data captured each tick:
+//   1. Decision trace  — rolling list of goalText changes (what the bot decided)
+//   2. Floor timing    — live "this floor" clock + recent per-floor bars
+//   3. Class leaderboard (Batch tab) — classes ranked by a chosen metric, live
+// The HP+damage dual trace (item 1 of the brief) is drawn in the sparkline
+// block inside renderStats itself, since it shares that canvas.
+let _leaderMetric = 'avgFloor'; // avgFloor | bestFloor | deathRate | avgKills
+const _LEADER_METRICS = [
+    { key:'avgFloor',  label:'by avg floor',  fmt:v=>v.toFixed(1),         hi:'max' },
+    { key:'bestFloor', label:'by best floor', fmt:v=>String(Math.round(v)),hi:'max' },
+    { key:'deathRate', label:'by survival',   fmt:v=>(100-v*100).toFixed(0)+'%', hi:'min' },
+    { key:'avgKills',  label:'by kills/run',  fmt:v=>v.toFixed(1),         hi:'max' },
+];
+const _floorTimes = []; // [{floor, sec}] recent completed floors this run
+const FLOOR_TIMES_MAX = 12;
+
+function renderLiveTelemetry(s, p) {
+    const running2 = (typeof running !== 'undefined') && running;
+
+    // ── 2. Floor timing (live) ───────────────────────────────────────────
+    // Detect floor change → bank the previous floor's elapsed time.
+    const curFloor = s ? s.floor : -1;
+    if (running2 && curFloor !== _lastSeenFloor) {
+        if (_lastSeenFloor >= 1 && _floorEnterStamp) {
+            const sec = (Date.now() - _floorEnterStamp) / 1000;
+            _floorTimes.push({ floor: _lastSeenFloor, sec });
+            if (_floorTimes.length > FLOOR_TIMES_MAX) _floorTimes.shift();
+        }
+        _lastSeenFloor = curFloor;
+        _floorEnterStamp = Date.now();
+    }
+    const ftCur = document.getElementById('bot-floortime-cur');
+    if (ftCur) {
+        const live = (running2 && _floorEnterStamp && curFloor >= 1)
+            ? ((Date.now() - _floorEnterStamp) / 1000) : 0;
+        ftCur.textContent = curFloor >= 1 ? `F${curFloor} · ${live.toFixed(1)}s` : '—';
+    }
+    const ftBars = document.getElementById('bot-floortime-bars');
+    if (ftBars) {
+        if (!_floorTimes.length) {
+            ftBars.innerHTML = '<span style="font-size:9px;color:#2a1e10">no floors cleared yet</span>';
+        } else {
+            const maxSec = Math.max(1, ..._floorTimes.map(f => f.sec));
+            ftBars.innerHTML = _floorTimes.map(f => {
+                const h = Math.max(3, (f.sec / maxSec) * 34);
+                const slow = f.sec > 12;
+                return `<div title="Floor ${f.floor}: ${f.sec.toFixed(1)}s"
+                    style="flex:1;min-width:6px;height:${h.toFixed(0)}px;border-radius:2px 2px 0 0;
+                    background:${slow ? '#e07820' : '#3a6a8a'};opacity:.85"></div>`;
+            }).join('');
+        }
+    }
+
+    // ── 3. Decision trace ─────────────────────────────────────────────────
+    const traceEl = document.getElementById('bot-trace');
+    if (traceEl) {
+        if (!_decisionTrace.length) {
+            traceEl.innerHTML = '<span style="font-size:9px;color:#2a1e10">idle</span>';
+        } else {
+            const now = Date.now();
+            traceEl.innerHTML = _decisionTrace.map((d, i) => {
+                const ago = Math.max(0, (now - d.t) / 1000);
+                const agoStr = ago < 1 ? 'now' : ago < 60 ? ago.toFixed(0) + 's' : Math.floor(ago / 60) + 'm';
+                const fresh = i === 0;
+                const color = fresh ? '#ffd65a' : '#8a7152';
+                const dot = fresh ? '#ffd65a' : '#3a2a18';
+                return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;
+                    ${fresh ? 'background:rgba(200,146,42,0.06);border-radius:3px' : ''}">
+                    <span style="color:${dot};font-size:8px">●</span>
+                    <span style="color:#3a2a18;font-size:8px;min-width:26px">F${d.floor}</span>
+                    <span style="color:${color};flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.goal)}</span>
+                    <span style="color:#2a1e10;font-size:8px">${agoStr}</span>
+                </div>`;
+            }).join('');
+        }
+    }
+
+    // ── 4. Class leaderboard (Batch tab) ──────────────────────────────────
+    const lbEl = document.getElementById('bot-leaderboard');
+    if (lbEl) {
+        const metricDef = _LEADER_METRICS.find(m => m.key === _leaderMetric) || _LEADER_METRICS[0];
+        const rows = Object.entries(liveClassStats).map(([cls, cs]) => {
+            const runs = cs.runs || 0;
+            const val = !runs ? 0
+                : metricDef.key === 'avgFloor'  ? cs.totalFloor / runs
+                : metricDef.key === 'bestFloor' ? cs.bestFloor
+                : metricDef.key === 'deathRate' ? cs.deaths / runs
+                : metricDef.key === 'avgKills'  ? (cs.totalKills || 0) / runs
+                : 0;
+            return { cls, runs, val };
+        }).filter(r => r.runs > 0);
+
+        if (!rows.length) {
+            lbEl.innerHTML = '<span style="font-size:9px;color:#2a1e10">run a batch to compare classes</span>';
+        } else {
+            // Sort: 'max' metrics descending, 'min' (deathRate) ascending = best first.
+            rows.sort((a, b) => metricDef.hi === 'min' ? a.val - b.val : b.val - a.val);
+            const scaleMax = Math.max(0.0001, ...rows.map(r => r.val));
+            const metricEl = document.getElementById('bot-leaderboard-metric');
+            if (metricEl) metricEl.textContent = metricDef.label + ' ▾';
+            lbEl.innerHTML = rows.map((r, i) => {
+                const color = CLS_COLOR[r.cls] || '#c8922a';
+                // For survival (min metric), invert bar so best = longest.
+                const barPct = metricDef.hi === 'min'
+                    ? Math.max(4, (1 - r.val) * 100)
+                    : Math.max(4, (r.val / scaleMax) * 100);
+                const lead = i === 0 ? `border-left:2px solid ${color};padding-left:6px` : 'padding-left:8px';
+                const rank = i === 0 ? '👑' : `${i + 1}`;
+                return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;${lead}">
+                    <span style="font-size:9px;width:14px;text-align:center;color:#5a4a34">${rank}</span>
+                    <span style="width:56px;color:${color};text-transform:capitalize;font-size:11px">${r.cls}</span>
+                    <div style="flex:1;height:12px;background:#0c0a07;border-radius:3px;overflow:hidden">
+                        <div style="height:100%;width:${barPct.toFixed(0)}%;background:${color};opacity:.8;border-radius:3px;transition:width .3s"></div>
+                    </div>
+                    <span style="width:42px;text-align:right;font-size:11px;color:#d4bc96;font-variant-numeric:tabular-nums">${metricDef.fmt(r.val)}</span>
+                    <span style="width:30px;text-align:right;font-size:9px;color:#3a2a18">${r.runs}r</span>
+                </div>`;
+            }).join('');
+        }
+    }
+}
+
+// Small HTML escaper for trace goal text.
+function esc(str) {
+    return String(str).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+}
+
 function renderStats() {
     if(minimized) return;
     const s=gs(), p=pp();
+
+    // Live telemetry: decision trace, floor timing, class leaderboard.
+    try { renderLiveTelemetry(s, p); } catch(e) { /* never break the panel */ }
 
     // ── Run card ──────────────────────────────────────────────────────────
     const card = document.getElementById('bot-run-card');
@@ -3617,34 +4116,58 @@ function renderStats() {
     if(pEl) pEl.textContent = botPathStats.searches
         ? `A*:${botPathStats.lastNodes}n${botPathStats.fails?' ✗'+botPathStats.fails:''}` : '';
 
-    // ── Sparkline HP timeline ─────────────────────────────────────────────
+    // ── Sparkline: HP timeline + damage dual-trace ────────────────────────
     const sparkCanvas = document.getElementById('bot-sparkline');
     if (sparkCanvas && _hpHistory.length > 1) {
         const sc = sparkCanvas.getContext('2d');
         const sw = sparkCanvas.width, sh = sparkCanvas.height;
         sc.clearRect(0, 0, sw, sh);
-        // Threshold lines
+
+        // Damage bars first (behind the HP line). Each tick draws a small bar
+        // from the baseline: dealt grows up (amber), taken grows down (red).
+        // Scaled to the max delta seen in the window so spikes stay readable.
+        const maxDmg = Math.max(
+            1,
+            ..._dmgDealtHistory.slice(-HP_HISTORY_MAX),
+            ..._dmgTakenHistory.slice(-HP_HISTORY_MAX)
+        );
+        const mid = sh * 0.5;
+        const n = _hpHistory.length;
+        const bw = Math.max(1, sw / n);
+        for (let i = 0; i < n; i++) {
+            const x = (i / (n - 1)) * sw;
+            const dealt = _dmgDealtHistory[i] || 0;
+            const taken = _dmgTakenHistory[i] || 0;
+            if (dealt > 0) {
+                const bh = (dealt / maxDmg) * (mid - 2);
+                sc.fillStyle = 'rgba(255,200,80,0.55)';
+                sc.fillRect(x - bw / 2, mid - bh, Math.max(0.8, bw * 0.7), bh);
+            }
+            if (taken > 0) {
+                const bh = (taken / maxDmg) * (mid - 2);
+                sc.fillStyle = 'rgba(229,80,80,0.55)';
+                sc.fillRect(x - bw / 2, mid, Math.max(0.8, bw * 0.7), bh);
+            }
+        }
+
+        // Threshold lines (heal / flee) over the bars.
         sc.strokeStyle = 'rgba(200,40,40,0.25)'; sc.lineWidth = 1;
         sc.beginPath(); const panicY = sh - (CFG.fleeAt||0.25) * sh;
         sc.moveTo(0, panicY); sc.lineTo(sw, panicY); sc.stroke();
         sc.strokeStyle = 'rgba(255,165,0,0.18)';
         sc.beginPath(); const healY = sh - (CFG.healAt||0.5) * sh;
         sc.moveTo(0, healY); sc.lineTo(sw, healY); sc.stroke();
-        // HP line
+
+        // HP line on top.
         sc.beginPath();
         _hpHistory.forEach((v, i) => {
             const x = (i / (_hpHistory.length - 1)) * sw;
             const y = sh - v * (sh - 2) - 1;
             i === 0 ? sc.moveTo(x, y) : sc.lineTo(x, y);
         });
-        // Color by current HP
         const curHp = _hpHistory[_hpHistory.length-1];
         sc.strokeStyle = curHp > 0.5 ? '#43a843' : curHp > 0.25 ? '#e07820' : '#e53935';
         sc.lineWidth = 1.5; sc.stroke();
-        // Fill
-        sc.lineTo(sw, sh); sc.lineTo(0, sh); sc.closePath();
-        sc.fillStyle = curHp > 0.5 ? 'rgba(67,168,67,0.12)' : curHp > 0.25 ? 'rgba(224,120,32,0.12)' : 'rgba(229,57,53,0.12)';
-        sc.fill();
     }
 
     // ── Kill feed ─────────────────────────────────────────────────────────
@@ -3891,6 +4414,13 @@ function renderStats() {
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
+// Honor a pre-set window._botDev (e.g. set in the console or a bootstrap before
+// the bot loads) so dev-mode error surfacing can be on from the first tick.
+if (typeof window !== 'undefined' && window._botDev) {
+    _DEV_MODE = true;
+    if (window._botDev === 'throw') _DEV_THROW = true;
+}
+
 window._bot = {
     toggle() {
         if(running){
@@ -4018,6 +4548,78 @@ window._bot = {
         navigator.clipboard?.writeText(code)
             .then(() => log(`Seed ${code} copied to clipboard`, 'info'))
             .catch(() => log(`Seed: ${code} (clipboard blocked)`, 'info'));
+    },
+    // Cycle the live leaderboard metric (avg floor → best → survival → kills).
+    cycleLeaderMetric() {
+        const keys = _LEADER_METRICS.map(m => m.key);
+        const i = keys.indexOf(_leaderMetric);
+        _leaderMetric = keys[(i + 1) % keys.length];
+        try { renderLiveTelemetry(gs(), pp()); } catch(_) {}
+    },
+    // Toggle dev-mode error surfacing. When on, errors that critical-path code
+    // normally swallows (movement, combat) are logged with a full stack trace
+    // instead of vanishing — invaluable when chasing an edge-case bug.
+    //   _bot.dev()        → enable logging
+    //   _bot.dev(true)    → enable logging
+    //   _bot.dev(false)   → disable (back to silent production behavior)
+    //   _bot.dev('throw') → enable AND re-throw, so the failure halts loudly
+    dev(mode = true) {
+        if (mode === 'throw') { _DEV_MODE = true; _DEV_THROW = true; }
+        else { _DEV_MODE = !!mode; _DEV_THROW = false; }
+        const state = _DEV_MODE ? (_DEV_THROW ? 'ON + throw' : 'ON') : 'OFF';
+        log(`Dev error-surfacing: ${state}`, 'info');
+        return _DEV_MODE;
+    },
+    // ── Completion mode: attempt a LEGITIMATE floor-100 clear ──────────────
+    // Proof-of-completability: "if a bot can clear 100 floors, a human can".
+    // Starts a single, non-batch run that must clear or die — no floor-skipping,
+    // big per-floor budgets, and conservative survival thresholds (one death ends
+    // the attempt, so the bot heals/flees earlier and won't take greedy trades).
+    //   _bot.complete()                     → knight (highest survivability) attempt
+    //   _bot.complete('cleric','warDomain') → pick a specific class/subclass
+    // Watch the floor counter climb; the run logs "CLEARED THE DUNGEON!" on success
+    // or the failure floor + cause on death/stall. Call _bot.stopComplete() to end.
+    complete(className = 'warrior', subclassId = null) {
+        // Default to the most survivable build observed in batch data: warrior/
+        // knight (top avg-floor, high HP/DEF). Caller can override.
+        if (className === 'warrior' && !subclassId) subclassId = 'knight';
+
+        // Snapshot the balance-mode CFG so stopComplete() can restore it exactly.
+        if (!_completionSaved) {
+            _completionSaved = {
+                healAt: CFG.healAt, fleeAt: CFG.fleeAt, abilityAt: CFG.abilityAt,
+                panicAt: CFG.panicAt, restAt: CFG.restAt, autoRestart: CFG.autoRestart,
+                loopBatch: CFG.loopBatch,
+            };
+        }
+        // Survival-first thresholds — a death here costs ~100 floors of progress.
+        CFG.completionMode = true;
+        CFG.healAt   = 0.65;  // potion earlier (was 0.50)
+        CFG.fleeAt   = 0.35;  // retreat earlier (was 0.25) — survive to fight again
+        CFG.abilityAt= 0.70;  // cleric heals earlier
+        CFG.panicAt  = 0.40;  // emergency measures sooner
+        CFG.restAt   = 0.90;  // rest at inn unless nearly full
+        CFG.autoRestart = true;  // auto-retry: a failed attempt starts a fresh one
+        CFG.loopBatch = false;
+        batch.active = false;    // not a balance batch — a single focused attempt
+        _completionAttempts = (_completionAttempts || 0) + 1;
+
+        log(`COMPLETION MODE: attempt #${_completionAttempts} as ${className}/${subclassId||'base'} — clearing all ${(typeof MAX_DUNGEON_FLOOR!=='undefined')?MAX_DUNGEON_FLOOR:100} floors, no skipping`, 'run');
+        if (!running) this.toggle();
+        forceNewRunAs(className);
+        // Pin the chosen subclass for this attempt's restarts.
+        _completionClass = className; _completionSub = subclassId;
+        return `Completion attempt started as ${className}/${subclassId||'base'}. Watch the floor counter; _bot.stopComplete() to end.`;
+    },
+    stopComplete() {
+        CFG.completionMode = false;
+        if (_completionSaved) {
+            Object.assign(CFG, _completionSaved);
+            _completionSaved = null;
+        }
+        _completionClass = null; _completionSub = null;
+        log('Completion mode OFF — balance-mode config restored', 'info');
+        return 'Completion mode stopped.';
     },
     // IMPROVE-2: show event stats summary in console
     eventStats() {
@@ -4160,6 +4762,7 @@ window._bot = {
         _abilitySpamCount = 0; _abilityBanned = false;
         _arenaPendingConfirm = false;
         _dodgeHistory = []; _dodgeCount = 0; _arrowDodgeCount = 0;
+        _kitePursuit = { key: '', ticks: 0 };
         _unreachableItems.clear(); _unreachableEnemies.clear();
         _unreachableStrikes = {};
         _errRate.count = 0; _errRate.suppressed = 0; _errRate.stamp = 0;

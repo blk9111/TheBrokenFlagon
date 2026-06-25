@@ -4664,9 +4664,9 @@ body.in-run #game-container {
 }
 
 .shop-tab-active {
-    background: rgba(255, 214, 90, 0.2) !important;
-    border-color: var(--gold) !important;
-    color: var(--gold) !important;
+    background: rgba(255, 214, 90, 0.2);
+    border-color: var(--gold);
+    color: var(--gold);
 }
 
 .shop-sell-hint {
@@ -6014,8 +6014,8 @@ body.in-run #game-container {
 }
 
 .bounty-active {
-    border-color: var(--gold-muted) !important;
-    background: rgba(212, 185, 122, 0.1) !important;
+    border-color: var(--gold-muted);
+    background: rgba(212, 185, 122, 0.1);
 }
 
 .bounty-info {
@@ -6066,10 +6066,10 @@ body.in-run #game-container {
 }
 
 .bounty-btn-active {
-    border-color: var(--gold-muted) !important;
-    color: var(--gold-muted) !important;
-    background: rgba(212, 185, 122, 0.18) !important;
-    cursor: default !important;
+    border-color: var(--gold-muted);
+    color: var(--gold-muted);
+    background: rgba(212, 185, 122, 0.18);
+    cursor: default;
 }
 
 /* ── Brew status badge ──────────────────────────────────────────── */
@@ -6174,8 +6174,8 @@ body.in-run #game-container {
 }
 
 .brew-active-row {
-    border-color: var(--green) !important;
-    background: rgba(88, 194, 109, 0.1) !important;
+    border-color: var(--green);
+    background: rgba(88, 194, 109, 0.1);
 }
 
 .brew-cant-afford {
@@ -6599,8 +6599,8 @@ body.in-run #game-container {
 }
 
 .bard-row-active {
-    border-color: var(--purple) !important;
-    background: rgba(196, 158, 255, 0.08) !important;
+    border-color: var(--purple);
+    background: rgba(196, 158, 255, 0.08);
 }
 
 .bard-cant-afford {
@@ -6661,7 +6661,7 @@ body.in-run #game-container {
 .bard-btn-active {
     border-color: var(--purple);
     color: var(--purple);
-    background: rgba(196, 158, 255, 0.14) !important;
+    background: rgba(196, 158, 255, 0.14);
 }
 
 /* ── Shared Stash overlay ────────────────────────────────────────── */
@@ -7071,9 +7071,9 @@ body.in-run #game-container {
 }
 
 .magic-tab-active {
-    background: rgba(123, 95, 255, 0.2) !important;
-    border-color: var(--purple) !important;
-    color: var(--purple) !important;
+    background: rgba(123, 95, 255, 0.2);
+    border-color: var(--purple);
+    color: var(--purple);
 }
 
 #magic-stock-list,
