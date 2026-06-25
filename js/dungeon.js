@@ -1249,6 +1249,25 @@ function chooseEnemyType() {
             }
         });
     }
+
+    // ── Region weighting (World Map B2) ───────────────────────────────────
+    // Bias the floor-eligible pool toward the current region's character. We
+    // only reweight types that are ALREADY in the pool (i.e. already unlocked
+    // by floor), so this never spawns an enemy before its floor — it just
+    // shifts which of the eligible types show up most. A type with no region
+    // weight keeps a baseline weight of 1 so nothing eligible is excluded.
+    if (typeof getRegionForFloor === 'function') {
+        const region = getRegionForFloor(gameState.floor);
+        if (region && region.weights) {
+            const weighted = [];
+            for (const type of pool) {
+                const w = region.weights[type] || 1;
+                for (let i = 0; i < w; i++) weighted.push(type);
+            }
+            if (weighted.length) return weighted[Math.floor(rng() * weighted.length)];
+        }
+    }
+
     return pool[Math.floor(rng() * pool.length)];
 }
 
@@ -1434,7 +1453,19 @@ function getGearStatLabel(item) {
 
 
 function rollRarity() {
-    if (!gameState.ironmanMode) {
+    // Region loot bonus (World Map B2) + Ironman bonus stack as a single
+    // "shift out of common" amount. Both pull percentage points out of the
+    // common tier and redistribute proportionally across the rarer tiers, so
+    // deeper regions and Ironman both nudge drops upward without a separate
+    // tuning table to maintain.
+    let shift = 0;
+    if (typeof getRegionForFloor === 'function') {
+        const region = getRegionForFloor(gameState.floor);
+        if (region && region.lootBonus) shift += region.lootBonus;
+    }
+    if (gameState.ironmanMode) shift += 0.05;
+
+    if (shift <= 0) {
         const roll = rng();
         let total = 0;
         for (const rarity of RARITIES) {
@@ -1443,20 +1474,20 @@ function rollRarity() {
         }
         return RARITIES[0];
     }
-    // Ironman mode's +5% rarity odds — shift 5 percentage points of
-    // chance out of common, redistributed across every other tier
-    // proportionally to their existing relative weight, rather than
-    // just dumping it all into one tier. Computed fresh each call
-    // instead of a second static table, since RARITIES itself might
-    // change shape later and this should always track it.
-    const nonCommonTotal = RARITIES.slice(1).reduce((sum, r) => sum + r.chance, 0);
+
+    // Shift `shift` worth of probability out of common, redistributed across
+    // every other tier proportionally to its existing weight. Cap the shift at
+    // the common tier's own chance so common can't go negative.
+    const common = RARITIES[0].chance;
+    const applied = Math.min(shift, common);
+    const nonCommonTotal = RARITIES.slice(1).reduce((sum, r) => sum + r.chance, 0) || 1;
     const roll = rng();
     let total = 0;
     for (let i = 0; i < RARITIES.length; i++) {
         const r = RARITIES[i];
         const chance = i === 0
-            ? Math.max(0, r.chance - 0.05)
-            : r.chance + 0.05 * (r.chance / nonCommonTotal);
+            ? Math.max(0, r.chance - applied)
+            : r.chance + applied * (r.chance / nonCommonTotal);
         total += chance;
         if (roll <= total) return r;
     }

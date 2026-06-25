@@ -1,11 +1,32 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// THE BROKEN FLAGON — Bot Controller v2
+// THE BROKEN FLAGON — Bot Controller
 // Add to index.html LAST, after all other scripts:
 //   <script src="js/bot-controller.js"></script>
 // Remove before shipping to players.
+//
+// VERSIONING: BOT_VERSION below is the single source of truth. Bump it on every
+// meaningful change and add a one-line CHANGELOG entry. Scheme: 2.MINOR.PATCH
+//   • MINOR — new feature or capability (display modes, persistence, loop mode)
+//   • PATCH — bug fix or tuning (stall fixes, diagnostics, cooldown values)
+// The version shows in the title bar, the startup log, and _bot.version().
 // ═══════════════════════════════════════════════════════════════════════════
 (function () {
 'use strict';
+
+// ── Version & changelog ───────────────────────────────────────────────────
+// Newest first. Keep entries terse — one line, what changed and why.
+const BOT_VERSION = '2.4.0';
+const BOT_BUILD_DATE = '2026-06-25';
+const BOT_CHANGELOG = [
+    ['2.4.0', 'Crash-proof run persistence (localStorage, survives reload/crash); 💾 Download CSV; loop-batch mode for overnight runs'],
+    ['2.3.1', 'Ability cooldown (bot-only) to stop spam loops at the source; cooldown configurable'],
+    ['2.3.0', 'Wall-clock stall watchdog (configurable) — escapes stuck floors in ~30s instead of ~5min'],
+    ['2.2.2', 'Sticky-unreachable tracking so genuinely walled enemies stay skipped; accurate stall diagnostics (summoner vs navigation)'],
+    ['2.2.1', 'Display-mode canvas hide fix — big map no longer flashes back in minimap/headless; per-frame enforcement'],
+    ['2.2.0', 'Display modes (Full / Minimap / Headless) to suppress the main canvas for speed; live FPS; session stats strip'],
+    ['2.1.0', 'Expanded session stats; richer run-pane metrics'],
+    ['2.0.0', 'Bot Controller v2 baseline — 6 tabs, HP sparkline, kill feed, minimap, pathfinder diag, death heatmap, per-class/subclass stats'],
+];
 
 // ── Ship guard ────────────────────────────────────────────────────────────
 // This file is a dev-only automation harness. It is INERT unless the host
@@ -38,6 +59,7 @@ const CFG = {
     smokeBombAt:  0.35,   // smoke-bomb escape threshold when 1 adjacent enemy
     panicAt:      0.30,   // emergency portal / predictive-heal danger threshold
     abilitySpamBanLimit: 16, // consecutive ability uses before banning it this run
+    abilityCooldownTicks: 4,  // min ticks between bot ability uses (rate-limit; ~0.5s at 120ms)
     // ── DESIGN-3: previously hardcoded magic numbers ──────────────────────
     intentScanRange:  4,     // tile radius for scanning enemy intents
     eliteThreatRange: 5,     // tile distance to trigger rage draught
@@ -45,6 +67,14 @@ const CFG = {
     portalMinLevel:   4,     // min player level to use mage/cleric portal
     elixirMinLevel:   6,     // min level to buy alchemist elixir
     alchemistPotMin:  3,     // min potion count before upgrading at alchemist
+    // ── Wall-clock stall watchdog ─────────────────────────────────────────
+    // Max real seconds the bot may spend on one floor before being force-ended,
+    // independent of tick counters (which in-place shuffling can keep resetting).
+    // This is the reliable catch-all escape. 0 disables. 30s default.
+    floorWatchdogMs: 30000,
+    // Loop the batch forever (overnight unattended runs). When true, completing
+    // all classes×runs restarts the batch instead of stopping. Off by default.
+    loopBatch: false,
 };
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -128,6 +158,7 @@ function recordRunResult(p, floor, outcome) {
             ? +((p.runStats.damageDelt||0) / p.runStats.damageTaken).toFixed(1) : 0,
     };
     runRecords.push(rec);
+    _persistRun(rec); // crash-proof: flush this run to localStorage immediately
     batch.startKills = stats.kills;
     batch.startGold  = stats.gold;
     if (runRecords.length > 1000) runRecords.shift();
@@ -197,6 +228,8 @@ function advanceBatch() {
     _lastExitLogKey  = null;
     _abilitySpamCount = 0;
     _abilityBanned   = false;
+    _abilityFloorCount = 0;
+    _lastAbilityTick = -999; // reset ability cooldown for the new run
     _runTickCount    = 0;
     _floorTickCount  = 0;
     batch.runIdx++;
@@ -205,10 +238,22 @@ function advanceBatch() {
         batch.classIdx++;
         batch.runIdx = 0;
         if (batch.classIdx >= batch.classes.length) {
-            batch.active = false;
-            log('Batch complete! Generating report...', 'run');
-            generateReport();
-            return;
+            // Loop mode (for overnight unattended runs): instead of stopping,
+            // restart the batch from the top and keep collecting. The persisted
+            // dataset keeps growing across loops. A one-line summary logs each
+            // cycle so the log shows progress without a blocking report panel.
+            if (CFG.loopBatch) {
+                batch.classIdx = 0;
+                batch.runIdx = 0;
+                batch._loopCount = (batch._loopCount || 0) + 1;
+                log(`Batch loop ${batch._loopCount} complete — ${_persistedRuns.length} runs saved, looping`, 'run');
+                // fall through to start the next run below
+            } else {
+                batch.active = false;
+                log('Batch complete! Generating report...', 'run');
+                generateReport();
+                return;
+            }
         }
     }
     const cls = batch.classes[batch.classIdx];
@@ -228,8 +273,11 @@ function forceNewRunAs(className) {
     _lastExitLogKey  = null;
     _abilitySpamCount = 0;
     _abilityBanned   = false;
+    _abilityFloorCount = 0;
+    _lastAbilityTick = -999; // reset ability cooldown for the new run
     _runTickCount    = 0;
     _floorTickCount  = 0;
+    _floorEnterMs    = Date.now(); // reset wall-clock watchdog for the new run
     _arenaPendingConfirm = false;
     if (window._bot) window._bot._boughtElixir = false; // reset once-per-run town purchase
     try {
@@ -303,6 +351,13 @@ let stuckTicks   = 0;
 let lastPosKey   = '';
 let _revealedWhileStuck = false; // guard so revealAll() fires once per stuck episode, not every tick
 let lastFloor    = -1;
+// Wall-clock watchdog: real elapsed time on the current floor. Unlike the tick
+// counters (_runTickCount / _floorTickCount), this CANNOT be reset by the bot
+// shuffling in place — only a genuine floor change resets it. This is the
+// reliable catch-all for "stuck doing something" stalls where small moves keep
+// resetting the soft tick timer but no real progress happens. Configurable via
+// CFG.floorWatchdogMs (0 disables).
+let _floorEnterMs = Date.now();
 let goalText     = 'Idle';
 let _logFilter   = 'all'; // active log filter: 'all'|'floor'|'death'|'warn'|'error'
 
@@ -310,9 +365,50 @@ let _logFilter   = 'all'; // active log filter: 'all'|'floor'|'death'|'warn'|'er
 const liveClassStats = {}; // cls → { runs, totalFloor, bestFloor, deaths, totalKills }
 const liveSubclassStats = {}; // subclassId → { name, cls, runs, totalFloor, bestFloor, deaths }
 let _renderTick  = 0;
+// ── Display performance modes (user-controllable) ─────────────────────────────
+// _displayMode drives how much gets drawn while the bot runs:
+//   'full'    — main game canvas + bot minimap (default, prettiest, slowest)
+//   'minimap' — main game canvas SUPPRESSED, only the bot's minimap draws (fast)
+//   'headless'— nothing visual draws (main canvas + minimap both off; max speed)
+// The main-canvas suppression is done via window._botSkipRender, which gameLoop
+// in ui.js checks each frame.
+let _displayMode = 'full';
+// FPS sampling for the bot HUD — counts main-loop frames over a rolling window.
+let _fpsFrames = 0, _fpsLastStamp = 0, _fpsValue = 0;
+function _botSampleFps() {
+    _fpsFrames++;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (!_fpsLastStamp) _fpsLastStamp = now;
+    const dt = now - _fpsLastStamp;
+    if (dt >= 500) {
+        _fpsValue = Math.round((_fpsFrames * 1000) / dt);
+        _fpsFrames = 0;
+        _fpsLastStamp = now;
+    }
+    requestAnimationFrame(_botSampleFps);
+}
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(_botSampleFps);
 let _lastGameOverId  = null;
 let _lastExitLogKey  = null;
 let _abilitySpamCount = 0;
+// Per-floor ability use counter. Unlike _abilitySpamCount (consecutive uses,
+// reset by any other action), this counts ALL ability uses on the current floor
+// and only resets on a genuine floor change. It catches "alternating" spam loops
+// — e.g. a necromancer that summons a minion, fiddles with it, summons again —
+// where the consecutive counter keeps getting reset and never trips the ban.
+let _abilityFloorCount = 0;
+const ABILITY_FLOOR_LIMIT = 40; // total ability uses on one floor before banning
+// Ability cooldown: the game has no native ability cooldown, so a bot at high
+// tick rates can fire an ability every tick (8×/sec at 120ms) and form spam
+// loops. This rate-limits the bot — NOT the game — gating ability use to once
+// per CFG.abilityCooldownTicks ticks. Prevents the loop forming rather than
+// catching it after the fact. _abilityTickClock increments every tick.
+let _abilityTickClock = 0;
+let _lastAbilityTick = -999;
+function _abilityOffCooldown() {
+    return (_abilityTickClock - _lastAbilityTick) >= (CFG.abilityCooldownTicks || 0);
+}
+function _markAbilityUsed() { _lastAbilityTick = _abilityTickClock; }
 let _abilityBanned   = false;
 let _runTickCount    = 0;
 
@@ -358,6 +454,57 @@ function _saveSession() {
     _sessionStats.totalTime += Math.round((Date.now() - _sessionStart) / 1000);
     _sessionStart = Date.now();
     try { localStorage.setItem(_SESSION_KEY, JSON.stringify(_sessionStats)); } catch(_) {}
+}
+
+// ── Persistent run-record store (crash-proof overnight data) ──────────────────
+// Every completed run is appended here AND flushed to localStorage immediately,
+// so an overnight batch survives a tab crash, OS sleep, or accidental close —
+// you reload and the data is still there to export. Accumulates across sessions
+// (multiple nights) rather than resetting per batch, since the goal is a growing
+// dataset. Storage isn't a constraint here, but we keep a generous safety cap so
+// a runaway can't silently hit quota and start throwing mid-night.
+const _PERSIST_KEY = 'bfBot_runRecords';
+const _PERSIST_MAX = 50000;            // generous; ~ many nights of runs
+let _persistedRuns = [];
+let _persistDirty = false;
+let _persistLastFlush = 0;
+try {
+    const raw = localStorage.getItem(_PERSIST_KEY);
+    if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) _persistedRuns = arr;
+    }
+} catch(_) { _persistedRuns = []; }
+
+// Append one completed run and flush. Flushing every run is the crash-proof
+// part: the moment a run finishes, it's on disk. JSON.stringify of even tens of
+// thousands of small records is well under a frame at the cadence runs complete
+// (seconds apart), so this is not a perf concern.
+function _persistRun(rec) {
+    _persistedRuns.push(rec);
+    if (_persistedRuns.length > _PERSIST_MAX) {
+        _persistedRuns.splice(0, _persistedRuns.length - _PERSIST_MAX);
+    }
+    _persistDirty = true;
+    _flushPersistedRuns();
+}
+
+function _flushPersistedRuns() {
+    if (!_persistDirty) return;
+    try {
+        localStorage.setItem(_PERSIST_KEY, JSON.stringify(_persistedRuns));
+        _persistDirty = false;
+        _persistLastFlush = Date.now();
+    } catch (e) {
+        // Quota exceeded or storage unavailable: trim the oldest 20% and retry
+        // once, so a long-running batch degrades gracefully instead of throwing
+        // on every run for the rest of the night.
+        try {
+            _persistedRuns.splice(0, Math.ceil(_persistedRuns.length * 0.2));
+            localStorage.setItem(_PERSIST_KEY, JSON.stringify(_persistedRuns));
+            _persistDirty = false;
+        } catch(_) { /* give up silently — in-memory runRecords still works */ }
+    }
 }
 
 // ── Auto-throttle ─────────────────────────────────────────────────────────
@@ -796,6 +943,13 @@ let _unreachableItems = new Set();
 // trying to "attack through the wall" forever. Cleared on floor change and
 // periodically (the bot's own movement may open a new approach route).
 let _unreachableEnemies = new Set();
+// Per-enemy count of how many times we've blacklisted it as unreachable this
+// floor. An enemy that keeps coming back as unreachable is genuinely walled off
+// (not just a patrol that wandered out of reach), so we let it "graduate" to a
+// sticky blacklist that survives the periodic clear — otherwise the bot is
+// pulled back to re-attempt it every 40 ticks and never commits to the exit.
+let _unreachableStrikes = {};
+const _STICKY_UNREACHABLE_AT = 3; // strikes before an enemy is permanently skipped this floor
 
 function nearestItem() {
     const s=gs(), p=pp(); if (!s?.items||!p) return null;
@@ -1457,6 +1611,11 @@ function bestTarget() {
         if (e.hp <= 0) continue;
         if (!s.revealed?.[e.y]?.[e.x]) continue;
         if (_unreachableEnemies.has(`${e.x},${e.y}`)) continue; // gave up (walled)
+        // Permanently skip enemies that have proven repeatedly unreachable this
+        // floor — they're genuinely walled, and re-targeting them is the stall
+        // loop we're fixing. Identity-keyed so it survives the periodic clear.
+        const _ek = e.id || `${e.type}@${e.x},${e.y}`;
+        if ((_unreachableStrikes[_ek] || 0) >= _STICKY_UNREACHABLE_AT) continue;
         const eType = (typeof ENEMY_TYPES!=='undefined' && ENEMY_TYPES[e.type]) || {};
         const range = e.range || eType.range || 1;
         const atk   = e.atk   || eType.atk   || 5;
@@ -1565,9 +1724,18 @@ function decideDungeon() {
                 try { tryStairsInteraction?.(); } catch(_) {}
                 return;
             }
-            goal(`Escaping grind — heading to exit (F${s.floor})`);
-            navigate(exitEsc.x, exitEsc.y);
-            return;
+            // If we've been trying to escape for a long stretch (75% of budget)
+            // and STILL haven't reached the exit, the exit is effectively
+            // unreachable (blocked chokepoint, enemy wall). Stop burning the
+            // remaining budget and end the run now through the normal timeout
+            // path — the diagnostic above will correctly attribute it.
+            if (_floorTickCount > MAX_FLOOR_TICKS * 0.75) {
+                _floorTickCount = MAX_FLOOR_TICKS; // trip the hard budget next check
+            } else {
+                goal(`Escaping grind — heading to exit (F${s.floor})`);
+                navigate(exitEsc.x, exitEsc.y);
+                return;
+            }
         }
     }
 
@@ -1691,9 +1859,9 @@ function decideDungeon() {
     }
 
     // ── 2. Cleric/light heal ability when hurt ──
-    if (frac < CFG.abilityAt && p.mana >= 4 &&
+    if (frac < CFG.abilityAt && p.mana >= 4 && _abilityOffCooldown() &&
         (p.className==='cleric'||p.subclass==='lightDomain'||p.subclass==='twilightDomain')) {
-        try { p.useAbility?.(); } catch(e) { err('heal ability',e); }
+        try { p.useAbility?.(); _markAbilityUsed(); log('Used heal ability', 'heal'); } catch(e) { err('heal ability',e); }
         return;
     }
 
@@ -1793,19 +1961,27 @@ function decideDungeon() {
     }
 
     // ── 7. Offensive subclass ability when there's a worthwhile target ──
-    if (closeEnemies >= 1 && shouldUseOffensiveAbility(p, closeEnemies)) {
+    if (closeEnemies >= 1 && _abilityOffCooldown() && shouldUseOffensiveAbility(p, closeEnemies)) {
         _abilitySpamCount++;
-        if (_abilitySpamCount >= CFG.abilitySpamBanLimit) {
-            // 16 consecutive ability uses with nothing else happening — stuck.
-            // Ban the ability for the rest of this run so the bot falls back
-            // to attacking and pathfinding normally.
+        _abilityFloorCount++;
+        // Two independent spam guards:
+        //  (a) consecutive uses with no other action (classic spam loop), and
+        //  (b) total uses on this floor (catches alternating loops where the
+        //      ability is interleaved with minion-fiddling or small moves, which
+        //      reset the consecutive counter but never make real progress).
+        if (_abilitySpamCount >= CFG.abilitySpamBanLimit ||
+            _abilityFloorCount >= ABILITY_FLOOR_LIMIT) {
+            const reason = _abilityFloorCount >= ABILITY_FLOOR_LIMIT
+                ? `${_abilityFloorCount}× on this floor (alternating loop)`
+                : `${CFG.abilitySpamBanLimit}× consecutively`;
             _abilityBanned = true;
             _abilitySpamCount = 0;
-            log(`${p.subclass||p.className} ability banned — spam loop detected`, 'warn');
-            err('ability-spam', new Error(`${p.subclass||p.className} ability fired ${CFG.abilitySpamBanLimit}× with no other action`));
+            log(`${p.subclass||p.className} ability banned — spam loop detected (${reason})`, 'warn');
+            err('ability-spam', new Error(`${p.subclass||p.className} ability fired ${reason} with no progress`));
         } else {
             try {
                 p.useAbility?.();
+                _markAbilityUsed();
                 log(`Used ${p.subclass||p.className} ability`, 'arena');
             } catch(e) { err('offensive ability',e); }
             return;
@@ -1847,6 +2023,11 @@ function decideDungeon() {
         // enemy for a short while and fall through to exploration so the bot
         // makes progress instead of fixating.
         _unreachableEnemies.add(`${enemy.x},${enemy.y}`);
+        // Count strikes by enemy identity (id if available, else type) so a
+        // genuinely walled enemy accumulates strikes across the periodic clears
+        // even though its tile coordinates may shift as it patrols in place.
+        const ekey = enemy.id || `${enemy.type}@${enemy.x},${enemy.y}`;
+        _unreachableStrikes[ekey] = (_unreachableStrikes[ekey] || 0) + 1;
         log(`${enemy.name} unreachable — exploring past it`, 'warn');
         // fall through (no return) to item/exit/explore logic below
     }
@@ -1915,6 +2096,17 @@ function decideDungeon() {
 // ── Main tick ─────────────────────────────────────────────────────────────
 function tick() {
     if (!running) return;
+    _abilityTickClock++; // drives the ability cooldown rate-limiter
+    // Per-tick enforcement of the display mode's canvas suppression. Something
+    // in the run-restart / updateUI cycle can momentarily re-show the main
+    // canvas (the "flash"), so we re-assert the intended state every tick.
+    // Idempotent: setting visibility to its current value is a no-op and causes
+    // no flicker, so this only acts when something else changed it.
+    if (_displayMode !== 'full') {
+        const gc = document.getElementById('game-canvas');
+        if (gc && gc.style.visibility !== 'hidden') gc.style.visibility = 'hidden';
+        if (!window._botSkipRender) window._botSkipRender = true;
+    }
     try { decide(); } catch(e) { err('tick',e); }
     // Sparkline: record HP% every tick, cap at HP_HISTORY_MAX
     const p = pp();
@@ -2035,15 +2227,39 @@ function decide() {
     // Floor changed
     if (s.floor !== lastFloor) {
         lastFloor = s.floor;
+        _floorEnterMs = Date.now(); // wall-clock watchdog: real progress resets it
         stuckTicks = 0;
         _revealedWhileStuck = false;
         _runTickCount = 0; // floor progress resets the soft stall timer
         _floorTickCount = 0; // ...and the hard per-floor budget
         _unreachableItems.clear(); // fresh floor — re-evaluate all item reachability
         _unreachableEnemies.clear(); // fresh floor — re-evaluate enemy reachability
+        _unreachableStrikes = {};    // fresh floor — clear sticky-unreachable strikes
+        _abilityFloorCount = 0;      // fresh floor — reset per-floor ability spam guard
         _dodgeHistory = []; _dodgeCount = 0; // fresh floor — clear dodge anti-loop state
         if (s.floor > 0 && s.floor > stats.bestFloor) stats.bestFloor = s.floor;
         if (s.floor > 0) log(`Floor ${s.floor}`,'floor');
+    }
+
+    // ── Wall-clock stall watchdog (catch-all escape) ──────────────────────
+    // The reliable backstop: if the bot has spent more than CFG.floorWatchdogMs
+    // of REAL time on this floor, it's stuck — no matter the cause (unreachable
+    // enemy, blocked exit, splitter loop, BFS dead-end). Tick counters can be
+    // reset by in-place shuffling and miss this; wall-clock can't. We try a
+    // clean tavern return first (banks any progress), and hard-restart the run
+    // if the portal isn't available within a short grace window.
+    if (CFG.floorWatchdogMs > 0 && s.floor > 0 && (Date.now() - _floorEnterMs) > CFG.floorWatchdogMs) {
+        const secs = Math.round((Date.now() - _floorEnterMs) / 1000);
+        log(`Watchdog: ${secs}s real time on F${s.floor} with no progress — extracting`, 'warn');
+        err('floor-watchdog', new Error(`Floor ${s.floor} watchdog fired after ${secs}s of real time — stuck (no floor change)`));
+        // Reset the timers so we don't immediately re-fire, and record the run.
+        _floorEnterMs = Date.now();
+        _runTickCount = 0; _floorTickCount = 0; _abilityBanned = false;
+        recordRunResult(p, s.floor, 'timeout');
+        _lastGameOverId = Date.now();
+        if (batch.active) { advanceBatch(); return; }
+        if (CFG.autoRestart) { forceNewRunAs(p.className || 'warrior'); }
+        return;
     }
 
     // Run stall timeout — if no floor change AND no kills in MAX_STALL_TICKS ticks,
@@ -2058,8 +2274,38 @@ function decide() {
         _floorTickCount = 0;
         _runTickCount = 0;
         _abilityBanned = false;
-        log(`Stuck on F${s.floor} for ${MAX_FLOOR_TICKS} ticks (kills kept resetting soft timer) — force-ending`, 'warn');
-        err('floor-timeout', new Error(`Floor ${s.floor} exceeded ${MAX_FLOOR_TICKS}-tick budget — likely an endless-spawn loop`));
+        // Diagnose the likely cause rather than always blaming summons. Only
+        // floors that actually contain a summoning enemy (necromancer, or a
+        // summoner/splitter boss) can endless-spawn; on other floors the budget
+        // is exhausted by a navigation stall — the bot keeps making small moves
+        // (which reset the soft stall timer) but never reaches the exit.
+        // Report what we can actually observe rather than guessing one cause.
+        // Two independent factors can exhaust the floor budget, and they often
+        // co-occur: (a) a summoner/splitter generating adds, and (b) the bot
+        // unable to reach an enemy or the exit (the "unreachable" blacklist).
+        // We surface both signals so the log points at the real situation.
+        const enemiesNow = (s.enemies || []).filter(e => e.hp > 0);
+        const summoners = enemiesNow.filter(e =>
+            e.type === 'necromancer' ||
+            e.bossVariant === 'summoner' || e.bossVariant === 'splitter' ||
+            e.name === 'Goblin King' ||
+            (e._raisedBy !== undefined && e._raisedBy !== null));
+        const stickyUnreachable = Object.values(_unreachableStrikes || {})
+            .filter(n => n >= _STICKY_UNREACHABLE_AT).length;
+        const unreachableCount = Math.max(
+            stickyUnreachable,
+            (typeof _unreachableEnemies !== 'undefined' && _unreachableEnemies) ? _unreachableEnemies.size : 0
+        );
+        const parts = [];
+        if (summoners.length) {
+            const names = [...new Set(summoners.map(e => e.name || e.bossVariant || e.type))];
+            parts.push(`summoner/splitter present (${names.join(', ')})`);
+        }
+        if (unreachableCount) parts.push(`${unreachableCount} unreachable enemy(s) — navigation blocked`);
+        if (!parts.length) parts.push(`${enemiesNow.length} enemies, exit likely unreachable`);
+        const cause = parts.join('; ');
+        log(`Stuck on F${s.floor} for ${MAX_FLOOR_TICKS} ticks (soft timer kept resetting) — force-ending`, 'warn');
+        err('floor-timeout', new Error(`Floor ${s.floor} exceeded ${MAX_FLOOR_TICKS}-tick budget — ${cause}`));
         recordRunResult(p, s.floor, 'timeout');
         _lastGameOverId = Date.now();
         if (batch.active) { advanceBatch(); return; }
@@ -2194,17 +2440,33 @@ function tryStartRun() {
     // Character select
     const cs = document.getElementById('class-select');
     if (cs && cs.style.display !== 'none') {
+        // Redesigned character-select (csn- prefix). Class tabs auto-select
+        // their first subclass, so picking a class tab is enough to populate
+        // everything and enable Begin Descent.
+        const tabs = document.querySelectorAll('.csn-cls-tab');
+        if (tabs.length && !document.querySelector('.csn-cls-tab.on')) {
+            try { tabs[0].click(); } catch (_) {}
+            return;
+        }
+        // A subclass pill is auto-selected on class pick, but click the first
+        // one explicitly if for some reason none is active yet.
+        const pills = document.querySelectorAll('.csn-sc-pill');
+        if (pills.length && !document.querySelector('.csn-sc-pill.on')) {
+            try { pills[0].click(); } catch (_) {}
+            return;
+        }
+        // Begin Descent
+        const beginBtn = document.querySelector('.csn-begin-btn');
+        if (beginBtn && !beginBtn.disabled) { beginBtn.click(); return; }
+
+        // ── Legacy fallback for older builds (pre-redesign) ──
         const cards = document.querySelectorAll('.cs-class-card');
         if (cards.length && !document.querySelector('.cs-class-active')) {
-            // Click the class's interactive area (the redesigned card splits the
-            // click target into .cs-class-top / .cs-class-ability sub-elements).
             const first = cards[0];
             const clickTarget = first.querySelector('.cs-class-top') || first;
             try { clickTarget.click(); } catch(_) { try { first.click(); } catch(_){} }
             return;
         }
-        // Subclass selection — the redesign uses .cs-chip buttons; fall back to
-        // the legacy .cs-sub-card for older builds.
         const chips = document.querySelectorAll('.cs-chip');
         if (chips.length && !document.querySelector('.cs-chip-active')) { chips[0].click(); return; }
         const subs = document.querySelectorAll('.cs-sub-card');
@@ -2470,6 +2732,23 @@ function buildPanel() {
 .bsp.on{background:#c8922a;color:#0a0805;border-color:#c8922a;font-weight:700}
 #bot-path-stat{margin-left:auto;font-size:9px;color:#2e1f0e}
 
+/* Display-mode controls (mirror the speed row) */
+#bot-display-row{display:flex;align-items:center;gap:5px;margin-top:6px;padding-top:6px;border-top:1px solid #1a1208}
+#bot-display-row span{font-size:9px;color:#3a2a18;margin-right:2px}
+.bdp{background:#141009;border:1px solid #1e140a;border-radius:4px;color:#5a4a34;
+  padding:3px 10px;cursor:pointer;font:inherit;font-size:9px;transition:all .12s}
+.bdp:hover{border-color:#6a4a28;color:#c8922a}
+.bdp.on{background:#c8922a;color:#0a0805;border-color:#c8922a;font-weight:700}
+#bot-fps-stat{margin-left:auto;font-size:9px;color:#2e1f0e}
+
+/* Expanded session stats strip — 8 compact cells, the "big picture" */
+#bot-session-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:8px;
+  padding-top:8px;border-top:1px solid #1a1208}
+.bss-cell{background:#0d0a06;border:1px solid #1a1208;border-radius:5px;padding:5px 4px;
+  display:flex;flex-direction:column;align-items:center;gap:1px}
+.bss-cell b{font-size:14px;font-weight:700;color:#e2ccaa;line-height:1}
+.bss-cell small{font-size:7px;font-weight:700;letter-spacing:.06em;color:#5a4a34}
+
 /* ═══ BATCH PANE ══════════════════════════════════════════════════════════ */
 #bp-batch{padding:10px 14px}
 .bbat-head{font-size:9px;color:#3a2a18;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
@@ -2571,12 +2850,13 @@ function buildPanel() {
     el.id = 'bot-panel';
     el.innerHTML = `
 <div id="bot-tb">
-  <span id="bot-tb-title">⚔ BOT DASHBOARD</span>
+  <span id="bot-tb-title">⚔ BOT DASHBOARD <span style="color:#5a4a34;font-weight:400;font-size:9px">v${BOT_VERSION}</span></span>
   <button id="bot-run-btn" class="bc" onclick="_bot.toggle()">▶ Start</button>
   <button class="bc" onclick="_bot.batch(20)" title="Run selected classes × runs each">⊡ Batch</button>
   <button class="bc bc-danger" onclick="_bot.forceReturn()" title="Force return to tavern">⌂</button>
   <button class="bc" onclick="_bot.report()" title="Full report">📊</button>
-  <button class="bc" onclick="_bot.exportCSV()" title="Export CSV">📄</button>
+  <button class="bc" onclick="_bot.exportCSV()" title="Copy all persisted runs as CSV">📄</button>
+  <button class="bc" onclick="_bot.downloadCSV()" title="Download all persisted runs as a .csv file (safest overnight capture)">💾</button>
   <button class="bc" onclick="_bot.min()" style="color:#3a2a18;padding:4px 8px" title="Minimise">−</button>
 </div>
 
@@ -2611,6 +2891,17 @@ function buildPanel() {
     </div>
     <div id="bot-goal">Idle</div>
   </div>
+  <!-- Expanded session stats — the "big picture" across this session -->
+  <div id="bot-session-strip">
+    <div class="bss-cell"><b id="bss-runs">0</b><small>RUNS</small></div>
+    <div class="bss-cell"><b id="bss-deaths">0</b><small>DEATHS</small></div>
+    <div class="bss-cell"><b id="bss-best">0</b><small>BEST F</small></div>
+    <div class="bss-cell"><b id="bss-avg">0</b><small>AVG F</small></div>
+    <div class="bss-cell"><b id="bss-kpr">0</b><small>KILLS/RUN</small></div>
+    <div class="bss-cell"><b id="bss-gpr">0</b><small>GOLD/RUN</small></div>
+    <div class="bss-cell"><b id="bss-rate">0</b><small>RUNS/HR</small></div>
+    <div class="bss-cell"><b id="bss-time">0m</b><small>UPTIME</small></div>
+  </div>
   <div id="bot-speed-row">
     <span>Speed</span>
     <button class="bsp" onclick="_bot.spd(600)">Slow</button>
@@ -2618,6 +2909,13 @@ function buildPanel() {
     <button class="bsp" onclick="_bot.spd(45)">Fast</button>
     <button class="bsp" onclick="_bot.spd(15)">Turbo</button>
     <span id="bot-path-stat"></span>
+  </div>
+  <div id="bot-display-row">
+    <span>Display</span>
+    <button class="bdp on" onclick="_bot.display('full')" title="Main game canvas + minimap (prettiest)">Full</button>
+    <button class="bdp" onclick="_bot.display('minimap')" title="Hide the big game canvas, keep the minimap (faster)">Minimap</button>
+    <button class="bdp" onclick="_bot.display('headless')" title="Draw nothing — maximum speed">Headless</button>
+    <span id="bot-fps-stat" title="Frames per second of the main render loop"></span>
   </div>
   <!-- HP sparkline -->
   <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1a1208">
@@ -2760,6 +3058,14 @@ function buildPanel() {
       <label>Floor tick cap</label>
       <input class="bcfg-input" id="bcfg-floorcap" type="number" min="500" max="10000" value="2500">
     </div>
+    <div class="bcfg-row">
+      <label>Stuck watchdog (sec, 0=off)</label>
+      <input class="bcfg-input" id="bcfg-watchdog" type="number" min="0" max="600" value="30">
+    </div>
+    <div class="bcfg-row">
+      <label>Ability cooldown (ticks)</label>
+      <input class="bcfg-input" id="bcfg-abilitycd" type="number" min="0" max="20" value="4">
+    </div>
   </div>
   <div class="bcfg-section">
     <div class="bcfg-label">Behaviour</div>
@@ -2770,6 +3076,10 @@ function buildPanel() {
     <div class="bcfg-check-row">
       <input type="checkbox" id="bcfg-autorestart" checked onchange="CFG.autoRestart=this.checked">
       <span>Auto-restart after death</span>
+    </div>
+    <div class="bcfg-check-row">
+      <input type="checkbox" id="bcfg-loopbatch" onchange="CFG.loopBatch=this.checked">
+      <span>Loop batch forever (overnight runs)</span>
     </div>
     <div class="bcfg-check-row">
       <input type="checkbox" id="bcfg-arena" onchange="_bot.setCfg('arena',this.checked)">
@@ -2796,6 +3106,10 @@ function buildPanel() {
     </div>
   </div>
   <button class="bc bcfg-apply" onclick="_bot.applyConfig()">✓ Apply Configuration</button>
+  <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1a1208;text-align:center;font-size:9px;color:#3a2a18">
+    Bot Controller <span style="color:#c8922a">v${BOT_VERSION}</span> · ${BOT_BUILD_DATE}
+    · <span style="cursor:pointer;text-decoration:underline" onclick="_bot.version()">changelog</span>
+  </div>
 </div>
 `;
     document.body.appendChild(el);
@@ -2946,7 +3260,7 @@ function showReportPanel(rows, heatmap, buildSummary) {
             <button onclick="document.getElementById('bot-report').remove()" style="background:#1e140a;border:1px solid #3a2810;border-radius:5px;color:#e2ccaa;padding:5px 12px;cursor:pointer;font:inherit;font-size:11px">✕ Close</button>
         </div>
         <div style="padding:16px 18px">
-            <p style="color:#7a6a58;font-size:11px;margin:0 0 12px">${runRecords.length} runs across ${rows.length} classes. Sorted by average floor depth reached.</p>
+            <p style="color:#7a6a58;font-size:11px;margin:0 0 12px">${runRecords.length} runs across ${rows.length} classes. Sorted by average floor depth reached.<br><span style="color:#58c26d">${_persistedRuns.length} total runs saved to disk</span> — survives reload/crash. Use <span style="color:#c8922a">💾 Download CSV</span> to capture everything.</p>
             <table style="width:100%;border-collapse:collapse;font-size:12px">
                 <thead>
                     <tr style="border-bottom:2px solid #2a1e10;color:#5a4a38;font-size:10px;text-transform:uppercase;letter-spacing:.05em">
@@ -3044,6 +3358,15 @@ function renderStats() {
             }
             const goalEl = document.getElementById('bot-goal');
             if (goalEl) goalEl.textContent = goalText;
+            // Display row: live FPS + current mode. Color-codes by health so a
+            // tanking frame rate is obvious at a glance during full-render runs.
+            const fpsEl = document.getElementById('bot-fps-stat');
+            if (fpsEl) {
+                const modeLabel = _displayMode === 'full' ? '' : ` · ${_displayMode}`;
+                fpsEl.textContent = `${_fpsValue} fps${modeLabel}`;
+                fpsEl.style.color = _fpsValue >= 50 ? '#58c26d'
+                    : _fpsValue >= 30 ? '#c8922a' : '#e04444';
+            }
             // IMPROVE-1: seed display — copyable 7-char code
             const seedEl = document.getElementById('bot-seed');
             if (seedEl && s?.runSeed) {
@@ -3056,6 +3379,39 @@ function renderStats() {
                 } catch(_) { seedEl.textContent = '?'; }
             }
         }
+    }
+
+    // ── Expanded session stats strip ──────────────────────────────────────
+    // The "big picture" the user asked for: cumulative session metrics that
+    // persist across runs, derived from the live `stats` + `_sessionStats` and
+    // the wall-clock session start. Updates every renderStats tick.
+    {
+        const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        const runs = stats.runs || 0;
+        const deaths = stats.deaths || 0;
+        const best = Math.max(stats.bestFloor || 0, _sessionStats.bestFloor || 0);
+        // Average floor reached across recorded runs (uses run history if present).
+        const floorsArr = (stats.floors && stats.floors.length) ? stats.floors : [];
+        const avgF = floorsArr.length
+            ? (floorsArr.reduce((a, b) => a + b, 0) / floorsArr.length)
+            : 0;
+        const killsPerRun = runs > 0 ? (stats.kills || 0) / runs : 0;
+        const goldPerRun  = runs > 0 ? (stats.gold || 0) / runs : 0;
+        // Elapsed wall-clock this session (seconds), plus any banked time.
+        const elapsedSec = Math.round((Date.now() - _sessionStart) / 1000)
+            + (_sessionStats.totalTime || 0);
+        const runsPerHr = elapsedSec > 0 ? (runs / (elapsedSec / 3600)) : 0;
+        const mins = Math.floor(elapsedSec / 60);
+        const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60}m` : `${mins}m`;
+
+        setEl('bss-runs', runs);
+        setEl('bss-deaths', deaths);
+        setEl('bss-best', best);
+        setEl('bss-avg', avgF ? avgF.toFixed(1) : '—');
+        setEl('bss-kpr', killsPerRun ? killsPerRun.toFixed(1) : '0');
+        setEl('bss-gpr', goldPerRun ? Math.round(goldPerRun) : '0');
+        setEl('bss-rate', runsPerHr ? runsPerHr.toFixed(1) : '0');
+        setEl('bss-time', timeStr);
     }
 
     // ── Batch progress (shown in Batch tab) ───────────────────────────────
@@ -3241,7 +3597,10 @@ function renderStats() {
     const s2 = gs(), p2 = pp();
     const mmWrap = document.getElementById('bot-minimap-wrap');
     const mmCanvas = document.getElementById('bot-minimap');
-    if (mmWrap && mmCanvas && s2?.dungeon && p2 && s2.floor > 0 && running) {
+    // Headless mode draws nothing; minimap+full modes both show the bot minimap.
+    if (_displayMode === 'headless') {
+        if (mmWrap) mmWrap.style.display = 'none';
+    } else if (mmWrap && mmCanvas && s2?.dungeon && p2 && s2.floor > 0 && running) {
         mmWrap.style.display = 'block';
         const dungeon  = s2.dungeon;
         const revealed = s2.revealed || [];
@@ -3383,12 +3742,21 @@ window._bot = {
             running=false; clearInterval(tickTimer); tickTimer=null;
             const b=document.getElementById('bot-run-btn');
             if(b){b.textContent='▶ Start';b.classList.remove('on');}
+            // Restore the main render on pause so you can actually see the game
+            // state you stopped to inspect, even if running in a fast display
+            // mode. The chosen _displayMode is re-applied on resume below.
+            window._botSkipRender = false;
+            { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = ''; }
+            if (typeof draw === 'function') { try { draw(); } catch(_){} }
             log('Paused','info');
         } else {
             // Audit required game functions on every start so a missing hook
             // surfaces immediately as an error, not as a silent no-op later.
             checkGameFunctions();
             running=true; patchFns();
+            // Re-apply the chosen display mode (pause restored full rendering).
+            window._botSkipRender = (_displayMode !== 'full');
+            { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = (_displayMode === 'full') ? '' : 'hidden'; }
             tickTimer=setInterval(tick, CFG.tickMs);
             const b=document.getElementById('bot-run-btn');
             if(b){b.textContent='⏸ Pause';b.classList.add('on');}
@@ -3415,6 +3783,28 @@ window._bot = {
         document.querySelectorAll('.bsp')[map[ms]??1]?.classList.add('on');
         if(running){clearInterval(tickTimer);tickTimer=setInterval(tick,ms);}
     },
+    // Display performance mode: full | minimap | headless. Controls whether the
+    // main game canvas (the "big map") and the bot minimap draw. Skipping the
+    // main canvas is the single biggest per-frame speedup during fast runs.
+    display(mode) {
+        if (!['full','minimap','headless'].includes(mode)) mode = 'full';
+        _displayMode = mode;
+        // window._botSkipRender is read by gameLoop() in ui.js each frame to
+        // skip the expensive draw() call.
+        window._botSkipRender = (mode !== 'full');
+        // Belt-and-suspenders: also hide the main canvas element directly. This
+        // guarantees the "big map" disappears in minimap/headless mode even if
+        // the gameLoop render-skip guard isn't present (e.g. an older ui.js) —
+        // skipping draw() alone only freezes the last frame, it doesn't hide it.
+        const gc = document.getElementById('game-canvas');
+        if (gc) gc.style.visibility = (mode === 'full') ? '' : 'hidden';
+        const idx = { full:0, minimap:1, headless:2 }[mode];
+        document.querySelectorAll('.bdp').forEach((b,i)=>b.classList.toggle('on', i===idx));
+        // Returning to full: clear the flag, restore the canvas, and force one
+        // immediate redraw so the screen isn't left on a stale frame.
+        if (mode === 'full' && typeof draw === 'function') { try { draw(); } catch(_){} }
+        log(`Display: ${mode}`, 'info');
+    },
     toggleCls(cls) {
         const idx = batch.classes.indexOf(cls);
         const btn = document.querySelector(`.bcfg-cls-btn.${cls}`);
@@ -3439,12 +3829,22 @@ window._bot = {
         const heal = parseInt(document.getElementById('bcfg-healat')?.value)||50;
         const flee = parseInt(document.getElementById('bcfg-fleeat')?.value)||25;
         const bank = parseInt(document.getElementById('bcfg-bankat')?.value)||120;
+        const watchdog = parseInt(document.getElementById('bcfg-watchdog')?.value);
+        const abilitycd = parseInt(document.getElementById('bcfg-abilitycd')?.value);
         batch.runsEach = Math.max(1, Math.min(200, runs));
         CFG.tickMs    = Math.max(15, Math.min(1000, tick));
         MAX_FLOOR_TICKS = Math.max(500, Math.min(10000, cap));
         CFG.healAt = Math.max(0.1, Math.min(0.9, heal/100));
         CFG.fleeAt = Math.max(0.05, Math.min(0.5, flee/100));
         CFG.bankAt = Math.max(0, Math.min(500, bank));
+        // Watchdog: seconds → ms. NaN-guard keeps the existing value if the
+        // field was cleared; clamp 0–600s (0 disables).
+        if (!Number.isNaN(watchdog)) {
+            CFG.floorWatchdogMs = Math.max(0, Math.min(600, watchdog)) * 1000;
+        }
+        if (!Number.isNaN(abilitycd)) {
+            CFG.abilityCooldownTicks = Math.max(0, Math.min(20, abilitycd));
+        }
         document.querySelectorAll('.bsp').forEach(b=>b.classList.remove('on'));
         // snap speed buttons to new tickMs
         this.spd(CFG.tickMs);
@@ -3478,7 +3878,16 @@ window._bot = {
         log(`Event stats: ${rows.length} types — see console`, 'info');
         return rows;
     },
-    tab(which){ this.nav(which==='items'?'items':'log'); },
+    // Print the running version and full changelog — answers "what's in the
+    // file I'm actually running right now?" without diffing source.
+    version() {
+        log(`Bot Controller v${BOT_VERSION} (built ${BOT_BUILD_DATE})`, 'run');
+        console.log(`%c⚔ Broken Flagon Bot Controller v${BOT_VERSION} (${BOT_BUILD_DATE})`,
+            'color:#c8922a;font-weight:700;font-size:13px');
+        console.table(BOT_CHANGELOG.map(([v, note]) => ({ version: v, change: note })));
+        return BOT_VERSION;
+    },
+    changelog: BOT_CHANGELOG,
     filter(type){
         _logFilter = type;
         document.querySelectorAll('#bot-log-tabs .blt').forEach(b=>b.classList.remove('on'));
@@ -3525,6 +3934,11 @@ window._bot = {
         // game in a fully normal state.
         running = false;
         clearInterval(tickTimer); tickTimer = null;
+        // Restore the main game render in case the bot was detached while in
+        // minimap/headless display mode — otherwise the canvas stays blank.
+        window._botSkipRender = false;
+        { const gc = document.getElementById('game-canvas'); if (gc) gc.style.visibility = ''; }
+        if (typeof draw === 'function') { try { draw(); } catch(_){} }
         const panel = document.getElementById('bot-panel');
         if (panel) panel.remove();
         try { localStorage.removeItem('flagonBot'); } catch(_) {}
@@ -3592,6 +4006,7 @@ window._bot = {
         _arenaPendingConfirm = false;
         _dodgeHistory = []; _dodgeCount = 0;
         _unreachableItems.clear(); _unreachableEnemies.clear();
+        _unreachableStrikes = {};
         _errRate.count = 0; _errRate.suppressed = 0; _errRate.stamp = 0;
         const b = document.getElementById('bot-run-btn');
         if (b) { b.textContent = '▶ Start'; b.classList.remove('on'); }
@@ -3604,16 +4019,49 @@ window._bot = {
     report() { generateReport(); },
     records() { return [...runRecords]; },
     exportCSV() {
-        const head = 'class,subclass,floor,outcome,kills,gold,level,weapon,seed,timestamp';
+        // Export the PERSISTED records (the full overnight dataset, crash-proof
+        // and accumulated across sessions) rather than just the in-memory window.
+        // Falls back to in-memory runRecords if persistence is somehow empty.
+        const src = (_persistedRuns && _persistedRuns.length) ? _persistedRuns : runRecords;
+        const head = 'class,subclass,floor,outcome,kills,gold,level,weapon,seed,bossesKilled,potionsUsed,dmgEfficiency,timestamp';
         const q = s => `"${String(s||'').replace(/"/g,'""')}"`;  // RFC 4180 quoting
-        const rows = runRecords.map(r =>
-            `${q(r.class)},${q(r.subclass)},${r.floor},${q(r.outcome)},${r.kills},${r.gold},${r.level},${q(r.weapon)},${q(r.seed||'')},${new Date(r.ts).toISOString()}`);
+        const rows = src.map(r =>
+            `${q(r.class)},${q(r.subclass)},${r.floor},${q(r.outcome)},${r.kills},${r.gold},${r.level},${q(r.weapon)},${q(r.seed||'')},${r.bossesKilled||0},${r.potionsUsed||0},${r.dmgEfficiency||0},${new Date(r.ts).toISOString()}`);
         const csv = [head, ...rows].join('\n');
         navigator.clipboard?.writeText(csv).then(
-            () => log('CSV copied to clipboard','run'),
+            () => log(`CSV copied (${src.length} runs)`,'run'),
             () => { console.log(csv); log('CSV logged to console','info'); }
         );
         return csv;
+    },
+    // Download the full persisted dataset as a .csv file — the safest way to
+    // capture an overnight run without relying on the clipboard. Works even if
+    // the batch is still going.
+    downloadCSV() {
+        const csv = this.exportCSV();
+        try {
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+            a.href = url; a.download = `flagon-bot-runs-${stamp}.csv`;
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            log(`Downloaded ${_persistedRuns.length} runs as CSV`,'run');
+        } catch(e) { err('downloadCSV', e); log('Download failed — use Copy CSV instead','warn'); }
+    },
+    // How many runs are safely persisted to disk right now.
+    persistedCount() {
+        log(`${_persistedRuns.length} runs persisted to localStorage (survives reload/crash)`, 'info');
+        return _persistedRuns.length;
+    },
+    // Clear the persisted dataset — use to start a fresh overnight collection.
+    clearPersisted() {
+        if (!confirm(`Delete all ${_persistedRuns.length} persisted run records? This cannot be undone.`)) return;
+        _persistedRuns = [];
+        try { localStorage.removeItem(_PERSIST_KEY); } catch(_) {}
+        log('Persisted run records cleared','warn');
     },
 
     // ── Emergency return ──────────────────────────────────────────────────
@@ -3706,9 +4154,12 @@ document.addEventListener('keydown', e => {
 // Global error capture
 window.addEventListener('error', e=>{ if(running) err(e.filename?.split('/').pop()+':'+e.lineno, e.error||e.message); });
 window.addEventListener('unhandledrejection', e=>{ if(running) err('Promise', e.reason); });
+// Final flush on tab close so a clean exit captures everything. Records are
+// already flushed per-run, so this is a belt-and-suspenders safety net.
+window.addEventListener('beforeunload', () => { try { _persistDirty = true; _flushPersistedRuns(); } catch(_){} });
 
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',buildPanel);
 else buildPanel();
 
-log('Bot Controller v2 ready — click Start','info');
+log(`Bot Controller v${BOT_VERSION} (${BOT_BUILD_DATE}) ready — click Start`,'info');
 })();

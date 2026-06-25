@@ -1213,6 +1213,36 @@ function showFloorTransition(floor) {
 }
 
 
+// ── Region Banner (World Map B2) ──────────────────────────────────────────────
+// A larger, more dramatic overlay than the per-floor transition, shown only when
+// the player crosses into a new named region. Sits a touch longer so the region
+// name and flavor land. Non-blocking and self-dismissing.
+function showRegionBanner(region) {
+    if (!region) return;
+    const old = document.getElementById('region-banner');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'region-banner';
+    overlay.style.setProperty('--region-color', region.color || '#ffd65a');
+    overlay.innerHTML = `
+        <div class="rb-content">
+            <div class="rb-eyebrow">Now Entering</div>
+            <div class="rb-name">${escHtml(region.name)}</div>
+            <div class="rb-flavor">${escHtml(region.flavor || '')}</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    void overlay.offsetWidth;
+    overlay.classList.add('rb-visible');
+
+    setTimeout(() => {
+        overlay.classList.add('rb-exit');
+        setTimeout(() => overlay.remove(), 600);
+    }, 2600);
+}
+
+
 function showBossReveal(name, color, glyph, announce) {
     // Remove any previous reveal
     const old = document.getElementById('boss-reveal');
@@ -1940,7 +1970,20 @@ let _renderCrashLogCount = 0;
 
 function gameLoop() {
     try {
-        draw();
+        // Bot fast-display mode: skip the expensive full-canvas draw while the
+        // bot is running with rendering suppressed. The loop itself keeps
+        // running (input, audio, the bot's own minimap) — only the main game
+        // canvas render is skipped, which is the single biggest per-frame cost.
+        // We also enforce the canvas's hidden/visible state here, every frame,
+        // so nothing (a run restart, a UI rebuild) can flash the big map back on
+        // between bot ticks. Idempotent: only writes when the value differs.
+        const _gc = (typeof document !== 'undefined') ? document.getElementById('game-canvas') : null;
+        if (window._botSkipRender) {
+            if (_gc && _gc.style.visibility !== 'hidden') _gc.style.visibility = 'hidden';
+        } else {
+            if (_gc && _gc.style.visibility === 'hidden') _gc.style.visibility = '';
+            draw();
+        }
     } catch (err) {
         // Log generously at first so the first occurrence is fully diagnosable,
         // then throttle — a bug that throws on every single frame (60/sec)

@@ -225,14 +225,7 @@
 
         <!-- ── Arena entrance cutscene (plays once, first time the Pit opens) ── -->
         <div id="arena-video-screen" style="display:none;">
-            <video id="arena-video" preload="none" playsinline>
-                <source src="Enter_the_Arena.mp4" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
-            <div id="arena-video-fallback" aria-hidden="true">
-                <p id="arena-video-fallback-title">⚔ Enter the Arena</p>
-                <p id="arena-video-fallback-text">The crowd roars as you step into The Pit.</p>
-            </div>
+            <canvas id="arena-canvas"></canvas>
             <button id="arena-video-skip-btn" onclick="skipArenaVideo()">Skip &#9655;</button>
         </div>
 
@@ -252,49 +245,106 @@
         </div>
 
         <div id="class-select" style="display:none;">
-            <div id="cs-bg" aria-hidden="true">
-                <div class="cs-hearth-glow"></div>
-                <div class="cs-light-rays"></div>
-                <div class="cs-vignette"></div>
-                <div class="cs-ember cs-ember-1"></div>
-                <div class="cs-ember cs-ember-2"></div>
-                <div class="cs-ember cs-ember-3"></div>
-                <div class="cs-ember cs-ember-4"></div>
-                <div class="cs-ember cs-ember-5"></div>
-                <div class="cs-ember cs-ember-6"></div>
-            </div>
-            <div id="cs-shell">
-                <header id="cs-hero">
-                    <div class="cs-hero-brand">
-                        <p class="cs-eyebrow">Dungeon Crawler RPG</p>
-                        <div id="tavern-status" class="tavern-status" style="display:none;"></div>
-                        <h1 class="cs-title" id="cs-logo-title">
-                            <span class="cs-sign" aria-hidden="true">&#10070;</span>
-                            <span class="cs-title-stack">
-                                <span class="cs-title-main">The Broken Flagon</span>
-                                <span class="cs-title-sub">Tavern</span>
-                            </span>
-                        </h1>
-                        <p class="cs-flavor" id="cs-flavor">Many descend. Few return.</p>
+            <!-- Legacy elements kept for JS compatibility -->
+            <div id="tavern-status" class="tavern-status" style="display:none;"></div>
+            <canvas id="cs-ptcl-canvas" aria-hidden="true"></canvas>
+
+            <div id="cs-new-root">
+                <!-- LEFT: Hero Art -->
+                <div id="cs-left-panel">
+                    <div id="cs-class-tabs"></div>
+                    <div class="cs-art-wrap">
+                        <img id="cs-hero-img" alt="" style="display:none" />
+                        <svg id="cs-hero-svg" viewBox="0 0 280 380" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
                     </div>
-                    <canvas id="cs-logo-canvas" aria-hidden="true"></canvas>
-                </header>
+                    <div id="cs-subclass-pills"></div>
+                </div>
 
-                <div class="cs-stage">
-                    <section class="cs-panel cs-panel-classes">
-                        <div class="cs-panel-head">
-                            <h2 class="cs-panel-title">Choose Your Champion</h2>
-                            <p class="cs-panel-sub">Four paths descend. One must survive.</p>
+                <!-- RIGHT: Config -->
+                <div id="cs-right-panel">
+                    <div class="csn-hdr">
+                        <div class="csn-cls-name" id="cs-cls-name"></div>
+                        <div class="csn-cls-tag" id="cs-cls-tag"></div>
+                        <div class="csn-hdr-meta">
+                            <div class="csn-stars" id="cs-stars"></div>
+                            <span class="csn-diff-lbl" id="cs-diff-lbl"></span>
                         </div>
-                        <div id="cs-class-list"></div>
-                    </section>
+                        <div class="csn-lore" id="cs-lore"></div>
+                    </div>
 
-                    <!-- Run History + Leaderboard — accessible from tavern -->
-                    <div class="cs-tavern-btns">
+                    <div class="csn-stats" id="cs-stats"></div>
+
+                    <div class="csn-ability">
+                        <div class="csn-abl-glyph" id="cs-abl-glyph"></div>
+                        <div style="flex:1;min-width:0">
+                            <div class="csn-abl-eye">Signature Ability</div>
+                            <div class="csn-abl-name" id="cs-abl-name"></div>
+                            <div class="csn-abl-desc" id="cs-abl-desc"></div>
+                            <div class="csn-abl-tags" id="cs-abl-tags"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="csn-tab-head">
+                            <button class="csn-tab-btn on" onclick="csTab('traits',this)">&#9889; Traits</button>
+                            <button class="csn-tab-btn" onclick="csTab('gear',this)">&#9876; Gear</button>
+                            <button class="csn-tab-btn" onclick="csTab('power',this)">&#9733; Power</button>
+                        </div>
+                        <div class="csn-tab-pane on" id="cs-tab-traits"></div>
+                        <div class="csn-tab-pane" id="cs-tab-gear"></div>
+                        <div class="csn-tab-pane" id="cs-tab-power"></div>
+                    </div>
+
+                    <div class="csn-cfg">
+                        <p class="csn-pick-hint" id="cs-pick-hint">Select a path above to configure your descent.</p>
+                        <div id="cs-config-inputs" style="display:none">
+                            <div class="csn-app-row">
+                                <span class="csn-app-lbl">Appearance</span>
+                                <div class="csn-g-btns">
+                                    <button class="csn-g-btn on" onclick="csSetGender('m',this)">&#9794; Male</button>
+                                    <button class="csn-g-btn" onclick="csSetGender('f',this)">&#9792; Female</button>
+                                </div>
+                                <img class="csn-portrait-preview" id="cs-portrait-img" src="" alt="" onerror="this.style.display='none'" onload="this.style.display=''">
+                            </div>
+                            <div class="csn-inp-row">
+                                <div class="csn-inp-grp">
+                                    <label class="csn-inp-lbl" for="char-name-input">Name</label>
+                                    <input class="csn-g-input" id="char-name-input" type="text" maxlength="16" autocomplete="off">
+                                </div>
+                                <div class="csn-inp-grp">
+                                    <label class="csn-inp-lbl" for="seed-code-input">Seed Code</label>
+                                    <input class="csn-g-input" id="seed-code-input" type="text" maxlength="7" placeholder="e.g. 3P7Y2CZ" autocomplete="off">
+                                    <span class="cs-seed-hint" id="seed-code-hint"></span>
+                                </div>
+                            </div>
+                            <label class="cc-ironman-row">
+                                <div class="cc-ironman-track">
+                                    <input type="checkbox" id="ironman-toggle" class="cc-ironman-checkbox">
+                                    <span class="cc-ironman-thumb"></span>
+                                </div>
+                                <div class="cc-ironman-text">
+                                    <span class="cc-ironman-label">Ironman Oath</span>
+                                    <span class="cc-ironman-desc">No Bank, no Shared Stash &#8212; but +8% gold find and +5% rarity for the whole descent.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button class="csn-begin-btn" onclick="confirmCharacter()">
+                        <span class="csn-orn">&#8213; &#10022; &#8213;</span>
+                        <span class="csn-begin-txt">BEGIN DESCENT</span>
+                    </button>
+                    <div style="text-align:center;margin-top:-6px">
+                        <button class="cc-daily-btn" onclick="startDailyChallenge()">&#9728; Daily Challenge</button>
+                        <p class="cc-daily-status" id="cc-daily-status"></p>
+                    </div>
+
+                    <div class="cs-tavern-btns" style="margin-top:4px">
+                        <button class="rh-toggle-btn" onclick="if(typeof openProfile==='function')openProfile()">&#9876; Profile</button>
                         <button class="rh-toggle-btn" onclick="toggleRunHistory()">&#9776; Past Runs</button>
                         <button class="rh-toggle-btn rh-lb-btn" onclick="if(typeof openLeaderboard==='function')openLeaderboard()">&#127942; Leaderboard</button>
                         <button class="rh-toggle-btn" onclick="toggleSaveSlots()">&#128190; Save Slots</button>
-                    <button class="rh-toggle-btn" onclick="if(typeof openTreasury==='function')openTreasury()" title="Spend Flagon Coins on permanent upgrades">&#9672; Treasury</button>
+                        <button class="rh-toggle-btn" onclick="if(typeof openTreasury==='function')openTreasury()">&#9672; Treasury</button>
                     </div>
                     <div id="run-history-panel" style="display:none;"></div>
                     <div id="save-slots-panel" style="display:none;"></div>
@@ -786,7 +836,9 @@
 
                 <div id="arena-body">
                     <div class="arena-section">
-                        <h3 class="arena-section-title">&#9756; Your Captures <span class="arena-section-sub">(max 5)</span></h3>
+                        <h3 class="arena-section-title">&#9756; Your Captures <span class="arena-section-sub">(max 5)</span>
+                            <button class="arena-stable-btn" onclick="if(typeof openStable==='function')openStable()" title="Open the Monster Stable to manage your captures">&#128046; Manage Stable</button>
+                        </h3>
                         <div id="arena-captures"></div>
                     </div>
                     <div class="arena-section">
@@ -848,6 +900,79 @@
                     <div id="treasury-nodes"></div>
                 </div>
                 <p class="shop-hint">ESC or Close to leave the Treasury</p>
+            </div>
+        </div>
+
+        <div id="profile-panel" style="display:none;">
+            <div id="profile-inner">
+                <div id="profile-header">
+                    <div id="profile-header-left">
+                        <h2><span class="panel-icon">&#9876;</span> <span id="profile-name">Champion</span></h2>
+                        <p class="profile-subtitle" id="profile-subtitle">Your legend, written in the Flagon's ledger.</p>
+                    </div>
+                    <button onclick="closeProfile()">&#x2715; Close</button>
+                </div>
+                <div id="profile-body">
+                    <div class="profile-section">
+                        <div class="profile-section-label">Reputation</div>
+                        <div class="profile-grid" id="profile-reputation"></div>
+                    </div>
+                    <div class="profile-section">
+                        <div class="profile-section-label">Career</div>
+                        <div class="profile-grid" id="profile-career"></div>
+                    </div>
+                    <div class="profile-section">
+                        <div class="profile-section-label">Arena Rivalries</div>
+                        <div id="profile-rivals"></div>
+                    </div>
+                    <div style="text-align:center;margin-top:6px">
+                        <button class="rh-toggle-btn" onclick="if(typeof openTrophyHall==='function')openTrophyHall()">&#127942; Open Hall of Legends</button>
+                    </div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave</p>
+            </div>
+        </div>
+
+        <div id="trophy-panel" style="display:none;">
+            <div id="trophy-inner">
+                <div id="trophy-header">
+                    <div id="trophy-header-left">
+                        <h2><span class="panel-icon">&#127942;</span> Hall of Legends</h2>
+                        <p class="trophy-subtitle" id="trophy-subtitle">Every deed, remembered in ash and gold.</p>
+                    </div>
+                    <button onclick="closeTrophyHall()">&#x2715; Close</button>
+                </div>
+                <div id="trophy-body">
+                    <div class="trophy-section">
+                        <div class="trophy-section-label">Records</div>
+                        <div class="trophy-grid" id="trophy-records"></div>
+                    </div>
+                    <div class="trophy-section">
+                        <div class="trophy-section-label">Current Pit Rank</div>
+                        <div id="trophy-pit-rank"></div>
+                    </div>
+                    <div class="trophy-section">
+                        <div class="trophy-section-label">Titles Earned <span id="trophy-title-count"></span></div>
+                        <div id="trophy-titles"></div>
+                    </div>
+                </div>
+                <p class="shop-hint">ESC or Close to leave the Hall</p>
+            </div>
+        </div>
+
+        <div id="stable-panel" style="display:none;">
+            <div id="stable-inner">
+                <div id="stable-header">
+                    <div id="stable-header-left">
+                        <h2><span class="panel-icon">&#128046;</span> Monster Stable <span id="stable-count" class="stable-count"></span></h2>
+                        <p class="stable-subtitle">Creatures you've caged this run. Fight them in the Pit, sell them, or set them free.</p>
+                    </div>
+                    <button onclick="closeStable()">&#x2715; Close</button>
+                </div>
+                <div id="stable-body">
+                    <div id="stable-list"></div>
+                </div>
+                <p class="shop-hint">Captures are lost on death. ESC or Close to leave.</p>
             </div>
         </div>
 
@@ -1230,6 +1355,9 @@
     <script src="js/save.js"></script>
     <script src="js/main.js"></script>
     <script src="js/treasury.js"></script>
+    <script src="js/profile.js"></script>
+    <script src="js/trophy-hall.js"></script>
+    <script src="js/stable.js"></script>
     <script src="js/leaderboard.js"></script>
 
     <!-- ───────────────────────────────────────────────────────────────────

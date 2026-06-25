@@ -709,6 +709,9 @@ const gameState = {
     allies: [],
     decoy: null,
     arenaOpen: false,
+    profileOpen: false,
+    trophyOpen: false,
+    stableOpen: false,
     // Set to true while a Pit bout is in progress. Drives combat-mode
     // checks in entities.js (enemy turns, attack routing) and intercepts
     // showGameOver() for non-ironman losses in ui.js.
@@ -1379,6 +1382,144 @@ const INNKEEPER_FAME_LINES = {
     Legend:     'The innkeeper goes quiet as you approach, then bows his head. "A living legend, under my roof. The next round is on the house. Every round is."',
     Undying:    'The innkeeper simply stares. Then, slowly: "I\'ve been running this tavern thirty years. I never thought I\'d see someone like you."',
 };
+
+// ── Tavern Reputation: how the room reacts when you walk in ────────────────────
+// Keyed by Pit title. The line is shown on tavern entry, scaling the crowd's
+// reaction to your fame. Below 'Challenger' the room ignores you.
+const TAVERN_ENTRY_REACTIONS = {
+    Unknown:    null, // nobody notices — no message
+    Challenger: 'A couple of patrons glance up as you enter, then return to their drinks.',
+    Contender:  'Heads turn as you step inside. Someone murmurs your name to the person beside them.',
+    Gladiator:  'A ripple of recognition moves through the room. A few mugs are raised in your direction.',
+    Champion:   'The tavern erupts as you enter — cheers, stamping boots, a spilled tankard or two.',
+    Warlord:    'The room rises as one. Bettors press toward you, shouting odds for your next bout.',
+    Legend:     'Silence falls, then thunder. Every soul in the Flagon is on their feet, roaring your name.',
+    Undying:    'The crowd does not cheer. They stare in something like awe, as if unsure you are real.',
+};
+
+// ── Random Patrons ────────────────────────────────────────────────────────────
+// Ambient overheard dialogue, shown occasionally on tavern entry. Pure
+// atmosphere — each is a named patron archetype muttering a line. {floor}
+// templates to the player's best floor for a touch of personalization.
+const TAVERN_PATRONS = [
+    { who: 'A drunk miner', line: '"Floor 12? That\'s where my brother went down. Never came back up."' },
+    { who: 'A retired knight', line: '"I fought in the Pit once. Once was enough. Look at my hands — they still shake."' },
+    { who: 'A treasure hunter', line: '"They say the deeper floors hide relics worth a kingdom. They also say nobody\'s seen them and lived."' },
+    { who: 'A hooded scholar', line: '"The ash-curse isn\'t random, you know. Something down there is making more of them."' },
+    { who: 'A nervous merchant', line: '"You\'re going back down? After what happened on Floor {floor}? Braver than me."' },
+    { who: 'An old bard', line: '"I\'ve a song half-written about a fighter like you. Don\'t die before the second verse, eh?"' },
+    { who: 'A one-eyed gambler', line: '"I had good coin on you last bout. Don\'t make me regret the next one."' },
+    { who: 'A tavern regular', line: '"Best floor of {floor}, they say. The Pit Master\'s started watching your runs."' },
+    { who: 'A weary healer', line: '"Bring me back alive and I\'ll patch you for free. That\'s the deal. Stay alive."' },
+    { who: 'A wide-eyed squire', line: '"Is it true? Did you really make it to Floor {floor}? They\'ll never believe me back home."' },
+];
+
+// ── Earned Titles ─────────────────────────────────────────────────────────────
+// Honorifics earned through play, displayed in the Trophy Hall. These COMPLEMENT
+// the Pit fame titles (Challenger…Undying) rather than replace them — the Pit
+// title is your live rank; these are permanent badges of deeds done. Each has a
+// predicate evaluated against gameState/gameMeta at render time.
+const EARNED_TITLES = [
+    { id: 'firstBlood',   name: 'First Blood',        desc: 'Slay your first enemy.',
+      test: () => ((gameMeta.stats && gameMeta.stats.totalKills) || 0) >= 1 },
+    { id: 'delver',       name: 'The Delver',         desc: 'Reach Floor 10.',
+      test: () => (gameState.bestFloor || 0) >= 10 },
+    { id: 'deepDweller',  name: 'Deep Dweller',       desc: 'Reach Floor 25.',
+      test: () => (gameState.bestFloor || 0) >= 25 },
+    { id: 'abyssWalker',  name: 'Abyss Walker',       desc: 'Reach Floor 50.',
+      test: () => (gameState.bestFloor || 0) >= 50 },
+    { id: 'conqueror',    name: 'Conqueror of Ash',   desc: 'Reach Floor 100 — face The Fallen God.',
+      test: () => (gameState.bestFloor || 0) >= 100 },
+    { id: 'bossbane',     name: 'Bossbane',           desc: 'Slay 10 bosses.',
+      test: () => (gameMeta.bossesSlain || 0) >= 10 },
+    { id: 'pitFighter',   name: 'Pit Fighter',        desc: 'Win 10 Pit bouts.',
+      test: () => (gameMeta.pitWins || 0) >= 10 },
+    { id: 'crowdFavorite',name: 'Crowd Favorite',     desc: 'Win 50 Pit bouts.',
+      test: () => (gameMeta.pitWins || 0) >= 50 },
+    { id: 'nemesisSlayer',name: 'Nemesis Slayer',     desc: 'Hold a winning record against every champion you have fought (min. 1 fight each).',
+      test: () => {
+          const r = gameMeta.rivals || {};
+          const ids = Object.keys(r);
+          if (!ids.length) return false;
+          return ids.every(id => (r[id].wins || 0) > (r[id].losses || 0));
+      } },
+    { id: 'goldBaron',    name: 'Gold Baron',         desc: 'Earn 50,000 gold across all runs.',
+      test: () => (gameMeta.totalGold || 0) >= 50000 },
+    { id: 'survivor',     name: 'The Survivor',       desc: 'Complete 25 runs.',
+      test: () => (gameMeta.runs || 0) >= 25 },
+];
+
+// Returns { earned: [...], locked: [...] } evaluating every title's predicate.
+function getEarnedTitles() {
+    const earned = [], locked = [];
+    for (const t of EARNED_TITLES) {
+        let ok = false;
+        try { ok = !!t.test(); } catch (_) { ok = false; }
+        (ok ? earned : locked).push(t);
+    }
+    return { earned, locked };
+}
+
+
+// ── Dungeon Regions (World Map B2 — regional theming) ──────────────────────────
+// The dungeon's 100 floors are divided into four named depth bands. Each region
+// has its own identity: a name, a color/flavor for the transition banner, a
+// WEIGHTED enemy pool (drawn entirely from the existing ENEMY_TYPES roster — no
+// new enemies), and a loot-rarity nudge. This makes the descent feel like a
+// journey through distinct places without adding a navigation layer or new
+// content. Floors still gate enemies by the original chooseEnemyType ladder;
+// regions reweight WHICH of the floor-eligible types show up so each band has a
+// recognizable character.
+//
+// weights: relative spawn weights. A type only appears if it's also unlocked by
+// the floor (see chooseEnemyType), so listing a deep type in an early region is
+// harmless — it simply won't spawn until its floor.
+const DUNGEON_REGIONS = [
+    {
+        id: 'crypt', name: 'The Ashen Crypt', floors: [1, 25],
+        color: '#9b8c6a',
+        flavor: 'Crumbling tombs choked with ash. The dead do not rest here.',
+        weights: { goblin: 3, slime: 3, skeleton: 4, archer: 2, brute: 2, bat: 2, spider: 2, cultist: 1, thief: 1 },
+        lootBonus: 0.00,
+    },
+    {
+        id: 'mines', name: 'The Forgotten Mines', floors: [26, 50],
+        color: '#c98b4a',
+        flavor: 'Collapsed shafts and veins of cursed ore. Something still digs.',
+        weights: { brute: 3, imp: 3, ratman: 3, ghoul: 3, lizardman: 2, orc: 3, necromancer: 1, warden: 2 },
+        lootBonus: 0.04,
+    },
+    {
+        id: 'cathedral', name: 'The Sunken Cathedral', floors: [51, 75],
+        color: '#5fa8c9',
+        flavor: 'Drowned naves and broken altars. Faith curdled into something else.',
+        weights: { ghoul: 3, necromancer: 3, darkknight: 3, cultist: 3, warden: 3, demon: 2, lizardman: 2 },
+        lootBonus: 0.08,
+    },
+    {
+        id: 'peaks', name: 'The Frost Peaks', floors: [76, 100],
+        color: '#a9c7e0',
+        flavor: 'A frozen summit above the ash. The air itself wants you dead.',
+        weights: { demon: 4, darkknight: 3, orc: 3, warden: 3, ghoul: 2, necromancer: 2 },
+        lootBonus: 0.12,
+    },
+];
+
+// The region a given floor belongs to (falls back to the first/last band for
+// floors outside the defined ranges, so this never returns null).
+function getRegionForFloor(floor) {
+    for (const r of DUNGEON_REGIONS) {
+        if (floor >= r.floors[0] && floor <= r.floors[1]) return r;
+    }
+    return floor < DUNGEON_REGIONS[0].floors[0]
+        ? DUNGEON_REGIONS[0]
+        : DUNGEON_REGIONS[DUNGEON_REGIONS.length - 1];
+}
+
+
+
+
+
 
 
 // Legendary guest NPCs — each appears in the tavern permanently after the

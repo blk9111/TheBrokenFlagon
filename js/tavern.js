@@ -199,6 +199,33 @@ function interactWithGuest() {
 }
 
 
+// ── Tavern Atmosphere ─────────────────────────────────────────────────────────
+// Shown when the player enters the tavern. The room reacts to the player's Pit
+// reputation, and occasionally a random patron mutters an overheard line. Pure
+// flavor — no mechanical effect. Kept cheap: just messages, no entities.
+function playTavernAtmosphere() {
+    const p = gameState.player;
+    if (!p) return;
+
+    // Reputation reaction — scales with Pit title. Only once the Pit is unlocked
+    // and the player has a title the room would actually recognise.
+    if (typeof isPitUnlocked === 'function' && isPitUnlocked() && typeof getPitTier === 'function') {
+        const tier = getPitTier();
+        const reaction = (typeof TAVERN_ENTRY_REACTIONS !== 'undefined') ? TAVERN_ENTRY_REACTIONS[tier.title] : null;
+        if (reaction) addMessage(reaction);
+    }
+
+    // Random patron chatter — ~55% chance, so it's a pleasant surprise rather
+    // than a guaranteed wall of text every single entry.
+    if (typeof TAVERN_PATRONS !== 'undefined' && TAVERN_PATRONS.length && Math.random() < 0.55) {
+        const patron = TAVERN_PATRONS[Math.floor(Math.random() * TAVERN_PATRONS.length)];
+        const floor = (gameState.bestFloor || 1);
+        const line = patron.line.replace(/\{floor\}/g, floor);
+        addMessage(`${patron.who}: ${line}`);
+    }
+}
+
+
 function openInnkeeper() {
     gameState.innOpen = true;
     document.getElementById('inn-panel').style.display = 'flex';
@@ -634,6 +661,21 @@ function descendFloor() {
     gameState.floor++;
     // Show floor transition overlay (non-blocking — auto-dismisses)
     if (typeof showFloorTransition === 'function') showFloorTransition(gameState.floor);
+    // Region transition (World Map B2) — when this descent crosses into a new
+    // named region, announce it. Fires once per boundary, not every floor.
+    if (typeof getRegionForFloor === 'function') {
+        const prevRegion = getRegionForFloor(gameState.floor - 1);
+        const newRegion  = getRegionForFloor(gameState.floor);
+        if (newRegion && newRegion.id !== (prevRegion && prevRegion.id)) {
+            addMessage(`\u2756 You enter ${newRegion.name}. ${newRegion.flavor}`);
+            if (typeof showEventCard === 'function') {
+                showEventCard(newRegion.name.toUpperCase(), newRegion.flavor, 'milestone');
+            }
+            if (typeof showRegionBanner === 'function') {
+                showRegionBanner(newRegion);
+            }
+        }
+    }
     resetPerFloorSubclassState();
     // Warlord's Banner relic — permanent +1 ATK each time you descend.
     {
@@ -805,6 +847,7 @@ function portalToTavern() {
     gameState.player.renderY = EXIT_Y * TILE_SIZE;
 
     addMessage(`You step into the tavern. A shimmering anchor marks Floor ${gameState.dungeonReturnFloor} — return when you're ready.`);
+    if (typeof playTavernAtmosphere === 'function') playTavernAtmosphere();
     saveActiveRun();
     updateUI();
 }

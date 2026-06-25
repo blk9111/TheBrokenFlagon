@@ -87,6 +87,43 @@ const PIT_CHAMPIONS = [
 // Gold multiplier on a winning bet, by difficulty label
 const BOUT_ODDS = { Easy: 1.5, Medium: 2.0, Hard: 3.0, Boss: 5.0, Captured: 2.5 };
 
+// ── Champion Intro patter ─────────────────────────────────────────────────────
+// The Pit Master's announcement before a bout. The FULL multi-line crawl plays
+// the first time you face a champion (and always for boss-tier); repeat fights
+// against lesser champions get a single short line so the farm loop doesn't
+// become a slideshow. Lines are templated with {name} → champion name.
+const PIT_MASTER_INTROS = {
+    Easy: {
+        full: ['The gate rattles open.', '"{name}," the Pit Master calls, almost bored.', '"Try to make it last."'],
+        short: ['"{name}. Again. Place your bets."'],
+    },
+    Medium: {
+        full: ['The torches gutter.', 'The Pit Master raises a hand for quiet.', '"{name} has tasted blood in this ring before."', '"Who walks out — them, or you?"'],
+        short: ['"{name} steps in. The crowd leans forward."'],
+    },
+    Hard: {
+        full: ['The crowd falls silent.', 'Chains drag across the stone.', '"{name} enters," the Pit Master shouts.', '"The last three who faced them were carried out."', '"Who dares?"'],
+        short: ['"{name} returns. The bookmakers go quiet."'],
+    },
+    Boss: {
+        full: ['The Pit itself seems to darken.', 'Every voice in the stands dies at once.', 'The Pit Master does not smile.', '"{name}.", he says. Only that.', 'The gate slams open.'],
+        // Bosses always get the full treatment — short is unused but defined for safety.
+        short: ['"{name}. The Pit holds its breath."'],
+    },
+};
+
+// Tracks which champions have had their full intro shown this session (so the
+// first fight gets the crawl, repeats get the one-liner). Boss-tier ignores it.
+const _seenChampionIntros = {};
+
+function _pitMasterLines(champ, isFirst) {
+    const tbl = PIT_MASTER_INTROS[champ.label] || PIT_MASTER_INTROS.Easy;
+    const useFull = isFirst || champ.label === 'Boss';
+    const lines = useFull ? tbl.full : tbl.short;
+    return lines.map(l => l.replace(/\{name\}/g, champ.name));
+}
+
+
 // The crowd bets more generously on a fighter they know. Each fame tier above
 // Unknown adds a small multiplier to the base betting odds — a mechanical
 // reward for reputation, so climbing the ranks pays off at the betting table,
@@ -165,6 +202,152 @@ function gainPitFame(amount) {
         showEventCard('SEASON UP', newSeason.name, 'milestone');
     }
 }
+
+// ── Arena Rivals ──────────────────────────────────────────────────────────────
+// Every champion remembers your head-to-head record. Persisted in
+// gameMeta.rivals (auto-saved by saveMetaProgress, which serializes all of
+// gameMeta). Keyed by champion.id — captures and gauntlets are excluded since
+// they have no stable identity to build a rivalry around.
+//
+//   gameMeta.rivals = {
+//     iron_warden: { wins, losses, streak, lastResult, firstFought, lastFought }
+//   }
+// streak: positive = consecutive wins, negative = consecutive losses.
+
+function getRival(id) {
+    if (!id) return null;
+    return (gameMeta.rivals && gameMeta.rivals[id]) || null;
+}
+
+function recordRivalResult(id, won) {
+    if (!id) return;
+    if (!gameMeta.rivals) gameMeta.rivals = {};
+    let r = gameMeta.rivals[id];
+    if (!r) {
+        r = { wins: 0, losses: 0, streak: 0, lastResult: null, firstFought: Date.now(), lastFought: 0 };
+        gameMeta.rivals[id] = r;
+    }
+    if (won) {
+        r.wins++;
+        r.streak = r.streak >= 0 ? r.streak + 1 : 1;
+        r.lastResult = 'win';
+    } else {
+        r.losses++;
+        r.streak = r.streak <= 0 ? r.streak - 1 : -1;
+        r.lastResult = 'loss';
+    }
+    r.lastFought = Date.now();
+    saveMetaProgress();
+}
+
+// "(2-3)" record string, or '' if this champion has never been fought.
+function rivalRecordStr(id) {
+    const r = getRival(id);
+    if (!r || (r.wins === 0 && r.losses === 0)) return '';
+    return `(${r.wins}-${r.losses})`;
+}
+
+// Short flavor descriptor for a rivalry, or '' when there's nothing notable to
+// say (keeps the UI uncluttered for fresh or trivial matchups).
+function rivalFlavor(id) {
+    const r = getRival(id);
+    if (!r) return '';
+    if (r.streak <= -3) return 'Your nemesis';
+    if (r.streak >= 3)  return 'You dominate them';
+    if (r.wins > 0 && r.losses > 0) return 'A bitter rivalry';
+    return '';
+}
+
+
+// ── Champion Intro overlay ────────────────────────────────────────────────────
+// Full-screen Pit Master patter that plays before a bout. Lines fade in one at
+// a time; the player can click/Space/Enter/Esc to skip straight to the fight.
+// Always calls onDone exactly once, whether it finishes naturally or is skipped.
+let _champIntroTimers = [];
+let _champIntroDone = null;
+
+function showChampionIntro(champ, lines, onDone) {
+    // Clean up any prior intro
+    _clearChampionIntro();
+    _champIntroDone = onDone;
+
+    const color = (champ.label === 'Boss') ? '#ff4444'
+                : (champ.label === 'Hard') ? '#ff9f3d'
+                : (champ.label === 'Medium') ? '#62b9ff' : '#cd7f32';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'champ-intro';
+    overlay.style.setProperty('--champ-color', color);
+    overlay.innerHTML = `
+        <div class="ci-stars">${'\u2605'.repeat(champ.stars || 1)}${'\u2606'.repeat(4 - (champ.stars || 1))}</div>
+        <div class="ci-lines" id="ci-lines"></div>
+        <div class="ci-skip">click or press space to continue</div>
+    `;
+    document.body.appendChild(overlay);
+    void overlay.offsetWidth;
+    overlay.classList.add('ci-visible');
+
+    const linesEl = document.getElementById('ci-lines');
+    const PER_LINE = 1100; // ms between line reveals
+    lines.forEach((text, i) => {
+        const t = setTimeout(() => {
+            const div = document.createElement('div');
+            div.className = 'ci-line';
+            // Last line (or boss name lines) gets emphasis
+            if (i === lines.length - 1) div.classList.add('ci-line-final');
+            div.textContent = text;
+            linesEl.appendChild(div);
+            void div.offsetWidth;
+            div.classList.add('ci-line-in');
+        }, i * PER_LINE);
+        _champIntroTimers.push(t);
+    });
+
+    // Auto-advance after the last line has had time to breathe
+    const total = lines.length * PER_LINE + 900;
+    _champIntroTimers.push(setTimeout(_finishChampionIntro, total));
+
+    // Skip handlers
+    overlay.addEventListener('click', _finishChampionIntro);
+    _champIntroKeyHandler = (e) => {
+        if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
+            e.preventDefault();
+            _finishChampionIntro();
+        }
+    };
+    document.addEventListener('keydown', _champIntroKeyHandler, true);
+}
+
+let _champIntroKeyHandler = null;
+
+function _clearChampionIntro() {
+    _champIntroTimers.forEach(clearTimeout);
+    _champIntroTimers = [];
+    if (_champIntroKeyHandler) {
+        document.removeEventListener('keydown', _champIntroKeyHandler, true);
+        _champIntroKeyHandler = null;
+    }
+    const el = document.getElementById('champ-intro');
+    if (el) el.remove();
+}
+
+function _finishChampionIntro() {
+    const el = document.getElementById('champ-intro');
+    if (el) {
+        el.classList.add('ci-fade');
+        setTimeout(() => { if (el) el.remove(); }, 400);
+    }
+    _champIntroTimers.forEach(clearTimeout);
+    _champIntroTimers = [];
+    if (_champIntroKeyHandler) {
+        document.removeEventListener('keydown', _champIntroKeyHandler, true);
+        _champIntroKeyHandler = null;
+    }
+    const cb = _champIntroDone;
+    _champIntroDone = null;
+    if (cb) cb();
+}
+
 
 function getAvailableChampions() {
     const fame = getPitFame();
@@ -295,6 +478,34 @@ function releaseCapture(idx) {
     if (gameState.player) gameState.player.gold += refund;
     addMessage(`You release the ${c.name} back into the wild (+${refund}g).`);
     renderArenaPanel();
+    if (typeof renderStable === 'function') renderStable();
+    updateUI();
+}
+
+
+// Sell value for a captured creature: its arena gold-base plus a small bonus
+// scaled to the floor it was caught on. Selling is the "cash it in instead of
+// fighting it" path — worth less than a winning bout, more than a release.
+function captureSellValue(c) {
+    if (!c) return 0;
+    return Math.round((c.goldBase || 20) * 1.5 + (c.floorCaptured || 1) * 2);
+}
+
+function sellCapture(idx) {
+    const creatures = gameState.capturedCreatures || [];
+    const c = creatures[idx];
+    if (!c) return;
+    const value = captureSellValue(c);
+    creatures.splice(idx, 1);
+    if (gameState.player) {
+        gameState.player.gold += value;
+        if (typeof trackGoldPickup === 'function') trackGoldPickup(value);
+    }
+    addMessage(`You sell the ${c.name} to a Pit broker for ${value}g.`);
+    if (typeof sfxItemPickup === 'function') sfxItemPickup();
+    renderArenaPanel();
+    if (typeof renderStable === 'function') renderStable();
+    if (typeof saveActiveRun === 'function') saveActiveRun();
     updateUI();
 }
 
@@ -370,12 +581,18 @@ function renderArenaPanel() {
             champEl.innerHTML = champions.map(c => {
                 const goldReward = c.goldBase + Math.floor((gameState.bestFloor || 0) / 10) * 5;
                 const odds = oddsFor(c.label);
+                const record = rivalRecordStr(c.id);
+                const flavor = rivalFlavor(c.id);
+                const recordHtml = record
+                    ? ` <span class="arena-rival-record">${record}</span>` : '';
+                const flavorHtml = flavor
+                    ? `<span class="arena-rival-flavor">${escHtml(flavor)}</span>` : '';
                 return `<div class="arena-bout-row" onclick="selectArenaBout('${escHtml(c.id)}', 'champion')">
                     <div class="arena-bout-info">
                         <span class="arena-bout-stars">${stars(c.stars)}</span>
                         <div class="arena-bout-names">
-                            <span class="arena-bout-name">${escHtml(c.name)}</span>
-                            <span class="arena-bout-diff arena-diff-${c.label.toLowerCase()}">${escHtml(c.label)}</span>
+                            <span class="arena-bout-name">${escHtml(c.name)}${recordHtml}</span>
+                            <span class="arena-bout-diff arena-diff-${c.label.toLowerCase()}">${escHtml(c.label)}${flavorHtml ? ' · ' : ''}${flavorHtml}</span>
                         </div>
                     </div>
                     <div class="arena-bout-rewards">
@@ -512,6 +729,14 @@ function confirmArenaBout() {
     // Gauntlet vs single bout
     if (bout.isGauntlet) {
         startGauntlet(bout.gauntletId, bet);
+    } else if (bout.type === 'champion' && bout.data) {
+        // Play the Pit Master's intro, then start the fight when it finishes
+        // (or immediately if the player skips it).
+        const champ = bout.data;
+        const isFirst = !_seenChampionIntros[champ.id];
+        _seenChampionIntros[champ.id] = true;
+        const lines = _pitMasterLines(champ, isFirst);
+        showChampionIntro(champ, lines, () => startArenaBout(bout, bet, ironman));
     } else {
         startArenaBout(bout, bet, ironman);
     }
@@ -620,7 +845,14 @@ function startArenaBout(bout, bet, ironman) {
 
     refreshEnemyIntents();
     sfxBossEncounter();
-    addMessage(`The iron gate slams shut. ${opponent.name} faces you across the Pit!`);
+    // Reference the rivalry if one exists — the champion "remembers" you.
+    const _champId = (bout.type === 'champion' && bout.data) ? bout.data.id : null;
+    const _rec = _champId ? rivalRecordStr(_champId) : '';
+    if (_rec) {
+        addMessage(`The iron gate slams shut. ${opponent.name} remembers you — your record stands ${_rec}.`);
+    } else {
+        addMessage(`The iron gate slams shut. ${opponent.name} faces you across the Pit!`);
+    }
     if (bet > 0) addMessage(`${bet}g bet placed. The crowd adjusts their odds.`);
     showEventCard('PIT FIGHT', opponent.name, 'boss');
     updateUI();
@@ -637,6 +869,13 @@ function resolveArenaBout(won) {
         savedPlayerX, savedPlayerY, savedHp
     } = gameState.arenaBoutData;
     const p = gameState.player;
+
+    // Capture the champion id for the rival record before arenaBoutData is
+    // cleared. Only champion bouts have a stable id; captures/gauntlets don't
+    // and are intentionally excluded from rivalries.
+    const _rivalBout = gameState.arenaBoutData.bout;
+    const _rivalId = (_rivalBout && _rivalBout.type === 'champion' && _rivalBout.data)
+        ? _rivalBout.data.id : null;
 
     // Restore world
     gameState.dungeon = savedDungeon;
@@ -664,6 +903,9 @@ function resolveArenaBout(won) {
     refreshEnemyIntents();
 
     gameMeta.pitBouts = (gameMeta.pitBouts || 0) + 1;
+
+    // Update the head-to-head rivalry record (champions only).
+    if (_rivalId) recordRivalResult(_rivalId, won);
 
     if (won) {
         const betWinnings = bet > 0 ? Math.floor(bet * odds) : 0;

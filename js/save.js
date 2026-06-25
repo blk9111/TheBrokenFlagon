@@ -704,6 +704,7 @@ function loadMetaProgress() {
                     if (Array.isArray(meta.meta.fallen)) gameMeta.fallen = meta.meta.fallen;
                     if (meta.meta.achievements) gameMeta.achievements = { ...meta.meta.achievements };
                     if (meta.meta.stats) gameMeta.stats = { ...gameMeta.stats, ...meta.meta.stats };
+                    if (meta.meta.rivals && typeof meta.meta.rivals === 'object') gameMeta.rivals = { ...meta.meta.rivals };
                 }
                 loadedFromBundle = true;
             }

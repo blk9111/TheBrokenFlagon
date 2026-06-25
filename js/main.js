@@ -117,6 +117,7 @@ function initGame(className, subclassId = null, characterName = '', seedOverride
             // The event message already fires from initGame — no duplicate needed
         }
         showEventCard('TAVERN HUB', 'Prepare, then enter the Dungeon Entrance', 'milestone');
+        if (typeof playTavernAtmosphere === 'function') playTavernAtmosphere();
     }
     updateUI();
 
@@ -554,23 +555,296 @@ function proceedToClassSelect() {
 // skipped, ends, or fails — so the arena always opens regardless. "Seen once"
 // is tracked via gameMeta.hintsSeen (already persisted) so it never replays.
 let _arenaVideoDone = null;
+let _arenaCanvasRaf  = null;
+let _arenaCanvasStopped = false;
+
+// ── Arena Canvas Cinematic ────────────────────────────────────────────────────
+// Runs entirely on a <canvas> element — no video file needed, works over
+// file:// protocol.  Sequence:
+//   0-1.5s  : Fade in from black, stone floor materialises
+//   1.5-3s  : Torch flames ignite on the side walls
+//   3-5s    : Crowd silhouettes rise from the bleachers
+//   5-6.5s  : "⚔ ENTER THE ARENA ⚔" title glows in
+//   6.5-8s  : Subtitle fades in
+//   8-9.5s  : Hold with living animations (embers, crowd sway)
+//   9.5-10s : Fade to black → auto-proceed (or Skip any time)
+function _runArenaCanvas(onDone) {
+    const cv = document.getElementById('arena-canvas');
+    if (!cv) { onDone(); return; }
+    const ctx = cv.getContext('2d');
+    cv.width  = window.innerWidth;
+    cv.height = window.innerHeight;
+    const W = cv.width, H = cv.height;
+
+    // ── Pre-generate crowd ────────────────────────────────────────────────────
+    const crowd = [];
+    for (let row = 0; row < 12; row++) {
+        const baseY = H * 0.66 + row * 22;
+        const density = Math.ceil(W / 16) + 4;
+        const alpha = 0.28 + (12 - row) * 0.038;
+        for (let i = 0; i < density; i++) {
+            crowd.push({
+                x: (i - 2) * 16 + (Math.random() * 10 - 5),
+                y: baseY + (Math.random() * 8 - 4),
+                r: 4.5 + Math.random() * 4,
+                sway: Math.random() * Math.PI * 2,
+                speed: 0.4 + Math.random() * 1.4,
+                row,
+                alpha: Math.min(alpha, 0.7),
+            });
+        }
+    }
+
+    // ── Torch positions ───────────────────────────────────────────────────────
+    const torches = [
+        { x: W * 0.055, y: H * 0.40 },
+        { x: W * 0.055, y: H * 0.60 },
+        { x: W * 0.945, y: H * 0.40 },
+        { x: W * 0.945, y: H * 0.60 },
+    ];
+
+    // ── Embers (pre-seeded so they appear immediately when torches light) ─────
+    const embers = Array.from({ length: 100 }, () => {
+        const t = torches[Math.floor(Math.random() * torches.length)];
+        return {
+            x: t.x, y: t.y, tx: t,
+            vx: (Math.random() - 0.5) * 1.4,
+            vy: -(0.6 + Math.random() * 3.0),
+            life: Math.random(),
+            ml: 0.5 + Math.random() * 1.8,
+            r: 0.8 + Math.random() * 2.0,
+        };
+    });
+
+    const TOTAL = 10.0;
+    const ease  = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const fi    = (t, s, e) => clamp((t - s) / (e - s), 0, 1); // fade-in helper
+
+    _arenaCanvasStopped = false;
+    let startTime = null;
+
+    function frame(ts) {
+        if (_arenaCanvasStopped) return;
+        if (!startTime) startTime = ts;
+        const t = (ts - startTime) / 1000;
+
+        // Auto-proceed after TOTAL seconds
+        if (t >= TOTAL) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, W, H);
+            _finishArenaVideo();
+            return;
+        }
+
+        _arenaCanvasRaf = requestAnimationFrame(frame);
+
+        ctx.clearRect(0, 0, W, H);
+
+        // ── Background ────────────────────────────────────────────────────────
+        const bgA = fi(t, 0, 1.2);
+        const bg = ctx.createRadialGradient(W * 0.5, H * 0.55, 0, W * 0.5, H * 0.55, Math.max(W, H) * 0.75);
+        bg.addColorStop(0,   `rgba(55,18,6,${bgA})`);
+        bg.addColorStop(0.5, `rgba(18,7,3,${bgA})`);
+        bg.addColorStop(1,   `rgba(0,0,0,${bgA})`);
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
+
+        // ── Arena floor (stone tiles) ─────────────────────────────────────────
+        const floorA = fi(t, 0.4, 2.0);
+        if (floorA > 0) {
+            ctx.save();
+            ctx.globalAlpha = floorA;
+
+            // Base floor colour
+            ctx.fillStyle = '#140d06';
+            ctx.fillRect(0, H * 0.54, W, H * 0.46);
+
+            // Tile grid
+            ctx.strokeStyle = 'rgba(90,55,18,0.22)';
+            ctx.lineWidth = 1;
+            const tW = 60, tH = 24;
+            for (let r = 0; r < 16; r++) {
+                const yy = H * 0.54 + r * tH;
+                for (let c = -1; c <= Math.ceil(W / tW) + 1; c++) {
+                    const xx = c * tW + (r % 2 === 0 ? 0 : tW * 0.5);
+                    ctx.strokeRect(xx, yy, tW, tH);
+                }
+            }
+
+            // Centre spotlight
+            const spot = ctx.createRadialGradient(W * 0.5, H * 0.70, 0, W * 0.5, H * 0.70, W * 0.24);
+            spot.addColorStop(0, 'rgba(255,195,90,0.14)');
+            spot.addColorStop(1, 'rgba(255,195,90,0)');
+            ctx.fillStyle = spot;
+            ctx.fillRect(0, H * 0.54, W, H * 0.46);
+
+            ctx.restore();
+        }
+
+        // ── Bleacher stands (dark arcs above crowd) ───────────────────────────
+        const standA = fi(t, 2.5, 4.0);
+        if (standA > 0) {
+            ctx.save();
+            ctx.globalAlpha = standA * 0.55;
+            ctx.fillStyle = '#0a0602';
+            ctx.beginPath();
+            ctx.moveTo(0, H * 0.66);
+            ctx.lineTo(0, H);
+            ctx.lineTo(W, H);
+            ctx.lineTo(W, H * 0.66);
+            ctx.bezierCurveTo(W * 0.75, H * 0.58, W * 0.25, H * 0.58, 0, H * 0.66);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // ── Torches ───────────────────────────────────────────────────────────
+        const torchA = fi(t, 1.2, 2.8);
+        if (torchA > 0) {
+            torches.forEach(tor => {
+                const flicker = 0.82 + 0.18 * Math.sin(ts * 0.0091 + tor.x * 0.01);
+
+                // Wide ambient glow
+                const gR = 130 * flicker;
+                const glow = ctx.createRadialGradient(tor.x, tor.y, 0, tor.x, tor.y, gR);
+                glow.addColorStop(0,   `rgba(255,155,35,${torchA * 0.50 * flicker})`);
+                glow.addColorStop(0.45,`rgba(200,70,8,${torchA  * 0.18 * flicker})`);
+                glow.addColorStop(1,   `rgba(160,30,0,0)`);
+                ctx.fillStyle = glow;
+                ctx.beginPath();
+                ctx.arc(tor.x, tor.y, gR, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Torch body
+                ctx.save();
+                ctx.globalAlpha = torchA;
+                ctx.fillStyle = '#4a2e14';
+                ctx.fillRect(tor.x - 3, tor.y, 6, 28);
+
+                // Flame layers
+                [[0.9,'rgba(255,220,80,0.9)'],[0.65,'rgba(255,140,20,0.75)'],[0.4,'rgba(200,60,10,0.55)']].forEach(([sc,col]) => {
+                    ctx.fillStyle = col;
+                    const fH = 28 * sc * flicker;
+                    ctx.beginPath();
+                    ctx.moveTo(tor.x - 5 * sc, tor.y);
+                    ctx.bezierCurveTo(tor.x - 9 * sc, tor.y - fH * 0.4, tor.x + 5 * sc, tor.y - fH * 0.7, tor.x, tor.y - fH);
+                    ctx.bezierCurveTo(tor.x - 5 * sc, tor.y - fH * 0.7, tor.x + 9 * sc, tor.y - fH * 0.4, tor.x + 5 * sc, tor.y);
+                    ctx.fill();
+                });
+
+                ctx.restore();
+            });
+
+            // ── Embers ────────────────────────────────────────────────────────
+            const dt = 0.016;
+            embers.forEach(e => {
+                e.life += dt;
+                if (e.life > e.ml) {
+                    const tor = torches[Math.floor(Math.random() * torches.length)];
+                    e.x = tor.x + (Math.random() - 0.5) * 8;
+                    e.y = tor.y;
+                    e.vx = (Math.random() - 0.5) * 1.4;
+                    e.vy = -(0.6 + Math.random() * 3.0);
+                    e.life = 0;
+                    e.ml   = 0.5 + Math.random() * 1.8;
+                    e.r    = 0.8 + Math.random() * 2.0;
+                }
+                e.x += e.vx * 0.28;
+                e.y += e.vy * 0.28;
+                const ea = (1 - e.life / e.ml) * 0.85 * torchA;
+                if (ea > 0) {
+                    ctx.beginPath();
+                    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255,210,80,${ea})`;
+                    ctx.fill();
+                }
+            });
+        }
+
+        // ── Crowd silhouettes ─────────────────────────────────────────────────
+        const crowdA = fi(t, 2.8, 4.5);
+        if (crowdA > 0) {
+            crowd.forEach(h => {
+                const bob = Math.sin(ts * 0.001 * h.speed + h.sway) * 2.8;
+                ctx.save();
+                ctx.globalAlpha = h.alpha * crowdA;
+                ctx.fillStyle = '#0f0a04';
+                ctx.beginPath();
+                // Head arc (semi-circle)
+                ctx.arc(h.x, h.y + bob, h.r, Math.PI, 0);
+                // Shoulders
+                ctx.bezierCurveTo(
+                    h.x + h.r * 2.3, h.y + bob + h.r * 1.9,
+                    h.x - h.r * 2.3, h.y + bob + h.r * 1.9,
+                    h.x - h.r,       h.y + bob
+                );
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // ── Title ─────────────────────────────────────────────────────────────
+        const titleA = ease(fi(t, 4.5, 6.0));
+        if (titleA > 0) {
+            ctx.save();
+            ctx.globalAlpha = titleA;
+
+            // Title background glow
+            const tg = ctx.createRadialGradient(W * 0.5, H * 0.36, 0, W * 0.5, H * 0.36, W * 0.32);
+            tg.addColorStop(0, 'rgba(190,130,15,0.18)');
+            tg.addColorStop(1, 'rgba(190,130,15,0)');
+            ctx.fillStyle = tg;
+            ctx.fillRect(0, 0, W, H);
+
+            const fz = Math.min(62, W * 0.052);
+            ctx.font         = `900 ${fz}px 'Cinzel', Georgia, serif`;
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Outer glow pass
+            ctx.shadowColor = 'rgba(255,185,35,0.95)';
+            ctx.shadowBlur  = 44;
+            ctx.fillStyle   = '#ffd65a';
+            ctx.fillText('\u2694 ENTER THE ARENA \u2694', W * 0.5, H * 0.36);
+
+            // Inner bright pass
+            ctx.shadowBlur = 10;
+            ctx.fillStyle  = '#fff8e0';
+            ctx.fillText('\u2694 ENTER THE ARENA \u2694', W * 0.5, H * 0.36);
+
+            // Subtitle
+            const subA = ease(fi(t, 6.0, 7.5));
+            if (subA > 0) {
+                ctx.globalAlpha = titleA * subA;
+                const sfz = Math.min(16, W * 0.014);
+                ctx.font       = `400 ${sfz}px 'Cinzel', Georgia, serif`;
+                ctx.shadowBlur = 14;
+                ctx.shadowColor = 'rgba(255,160,30,0.65)';
+                ctx.fillStyle  = 'rgba(255,195,110,0.88)';
+                ctx.fillText('The crowd roars as you step into The Pit.', W * 0.5, H * 0.36 + fz + 20);
+            }
+
+            ctx.restore();
+        }
+
+        // ── Fade to black at end ──────────────────────────────────────────────
+        const endA = fi(t, TOTAL - 1.2, TOTAL);
+        if (endA > 0) {
+            ctx.fillStyle = `rgba(0,0,0,${endA})`;
+            ctx.fillRect(0, 0, W, H);
+        }
+    }
+
+    _arenaCanvasRaf = requestAnimationFrame(frame);
+}
 
 function maybePlayArenaIntro(onDone) {
-    const seen = gameMeta.hintsSeen && gameMeta.hintsSeen.arenaIntro;
+    const seen   = gameMeta.hintsSeen && gameMeta.hintsSeen.arenaIntro;
     const screen = document.getElementById('arena-video-screen');
-    const video = document.getElementById('arena-video');
+    const canvas = document.getElementById('arena-canvas');
 
-    // Already seen, or the markup/elements aren't present → just proceed.
-    if (seen || !screen || !video) { onDone(); return; }
-
-    // Over file:// the .mp4 load throws a cross-origin error; skip to the Pit.
-    if (location.protocol === 'file:') {
-        if (!gameMeta.hintsSeen) gameMeta.hintsSeen = {};
-        gameMeta.hintsSeen.arenaIntro = true;
-        saveMetaProgress();
-        onDone();
-        return;
-    }
+    // Already seen, or markup isn't present → just proceed.
+    if (seen || !screen || !canvas) { onDone(); return; }
 
     // Mark seen immediately so a refresh mid-cutscene doesn't replay it.
     if (!gameMeta.hintsSeen) gameMeta.hintsSeen = {};
@@ -579,23 +853,12 @@ function maybePlayArenaIntro(onDone) {
 
     _arenaVideoDone = onDone;
     screen.style.display = 'flex';
-    screen.classList.remove('arena-video-failed');
-    video.currentTime = 0;
-    video.onended = _finishArenaVideo;
-    const showFallback = () => {
-        screen.classList.add('arena-video-failed');
-        // Auto-dismiss the fallback placeholder after a moment so a missing
-        // file doesn't strand the player — they still reach the arena.
-        setTimeout(_finishArenaVideo, 800);
-    };
-    video.onerror = showFallback;
-    const playPromise = video.play();
-    if (playPromise && playPromise.catch) playPromise.catch(showFallback);
+    _runArenaCanvas(_finishArenaVideo);
 }
 
 function skipArenaVideo() {
-    const video = document.getElementById('arena-video');
-    if (video) video.pause();
+    _arenaCanvasStopped = true;
+    if (_arenaCanvasRaf) { cancelAnimationFrame(_arenaCanvasRaf); _arenaCanvasRaf = null; }
     _finishArenaVideo();
 }
 
@@ -647,258 +910,434 @@ function dismissFallenGodReveal() {
 }
 
 function _finishArenaVideo() {
+    _arenaCanvasStopped = true;
+    if (_arenaCanvasRaf) { cancelAnimationFrame(_arenaCanvasRaf); _arenaCanvasRaf = null; }
     const screen = document.getElementById('arena-video-screen');
-    const video = document.getElementById('arena-video');
-    if (video) { video.onended = null; video.onerror = null; video.pause(); }
-    if (screen) { screen.style.display = 'none'; screen.classList.remove('arena-video-failed'); }
+    if (screen) { screen.style.display = 'none'; }
     const cb = _arenaVideoDone;
     _arenaVideoDone = null;
     if (cb) cb();
 }
 
 
-function renderClassSelect() {
-    ccState = { className: null, subclassId: null, gender: 'm' };
-    const flavorEl = document.getElementById('cs-flavor');
-    // Math.random() here is correct, not an oversight: this screen renders
-    // before initGame() arms the seeded RNG for the run the player is
-    // about to start, so there's no seed yet to draw from — and the line
-    // itself is cosmetic flavor text with no gameplay consequence anyway.
-    if (flavorEl) flavorEl.textContent = TAVERN_FLAVOR_LINES[Math.floor(Math.random() * TAVERN_FLAVOR_LINES.length)];
-    renderClassList();
+// ── Class-Select Display Data ─────────────────────────────────────────────────
+const CS_DISPLAY_DATA = {
+    warrior: {
+        tag: 'Unbreakable Steel',
+        lore: '"A shield is only as strong as the arm behind it."',
+        diff: 2,
+        gear: [
+            { i: '⚔', n: 'Rusted Sword',  t: 'Main-Hand Weapon' },
+            { i: '🛡', n: 'Wooden Shield', t: 'Off-Hand Armor'   },
+            { i: '❤', n: 'Health Potion',  t: 'Consumable'       },
+        ],
+        power: { Mobility: 4, Damage: 7, Defense: 10, Utility: 5 }, ps: 3,
+        subs: {
+            berserker:  { traitIcons: ['🩸','⚔','💀'], abl: { g:'🩸', name:'BLOODLUST',      desc:'ATK scales with missing HP — the more wounded, the more dangerous', tags:['Passive','Rage','Scales'] } },
+            knight:     { traitIcons: ['🛡','⚔','📈'], abl: { g:'🛡', name:'SHIELD WALL',    desc:'Absorb all incoming damage for one full turn', tags:['Block','Melee','Passive CD'] } },
+            gladiator:  { traitIcons: ['🏟','⚔','★'],  abl: { g:'⚔', name:'RIPOSTE',        desc:'Each hit taken stacks — release to amplify your next strike', tags:['Passive','On Hit','Stacking'] } },
+        },
+    },
+    rogue: {
+        tag: 'Master of Shadows',
+        lore: '"The dagger you never see is the one that kills you."',
+        diff: 3,
+        gear: [
+            { i: '🗡', n: 'Twin Daggers', t: 'Dual-Wield Weapons' },
+            { i: '💨', n: 'Smoke Bomb',   t: 'Consumable'         },
+            { i: '🔑', n: 'Lockpick Kit', t: 'Tool'               },
+        ],
+        power: { Mobility: 10, Damage: 8, Defense: 2, Utility: 9 }, ps: 4,
+        subs: {
+            assassin:  { traitIcons: ['⚡','🗡','👁'],  abl: { g:'💀', name:'MARKED FOR DEATH', desc:'Mark a target — your next hit against it is a guaranteed critical', tags:['Crit','Enemy','1 Mark'] } },
+            trickster: { traitIcons: ['🪤','⚡','🌀'],  abl: { g:'💨', name:'SMOKE SCREEN',     desc:'Vanish into a cloud — all enemies lose sight of you immediately', tags:['Stealth','AOE','Escape'] } },
+            shadow:    { traitIcons: ['🌑','👁','✦'],   abl: { g:'🌑', name:'SHADOW STEP',      desc:'Teleport through solid walls to any tile within range', tags:['2 Tiles','4T CD','Teleport'] } },
+        },
+    },
+    mage: {
+        tag: 'Architect of Ruin',
+        lore: '"Fire does not distinguish between friend and foe."',
+        diff: 4,
+        gear: [
+            { i: '🪄', n: 'Apprentice Staff',   t: 'Main-Hand Weapon' },
+            { i: '📖', n: 'Tattered Spellbook', t: 'Off-Hand Focus'   },
+            { i: '🧪', n: 'Mana Draught',        t: 'Consumable'       },
+        ],
+        power: { Mobility: 4, Damage: 10, Defense: 1, Utility: 8 }, ps: 5,
+        subs: {
+            elementalist: { traitIcons: ['✦','🔥','⚡'],  abl: { g:'🔥', name:'ELEMENTAL SURGE', desc:'Cycle fire, ice, and lightning in a single devastating strike', tags:['AOE','Tri-Element','5T CD'] } },
+            illusionist:  { traitIcons: ['👻','🌀','🪞'], abl: { g:'👻', name:'PHANTOM TWIN',    desc:'Summon a decoy that draws all enemy aggression to itself', tags:['Summon','Taunt','4T CD'] } },
+            necromancer:  { traitIcons: ['💀','🩸','🦴'], abl: { g:'💀', name:'RAISE DEAD',      desc:'Reanimate a fallen enemy as your temporary undead ally', tags:['Summon','Undead','5T CD'] } },
+        },
+    },
+    cleric: {
+        tag: 'Divine Champion',
+        lore: '"Faith is a shield. Doubt is the only wound that festers."',
+        diff: 2,
+        gear: [
+            { i: '🔨', n: 'Blessed Mace',      t: 'Main-Hand Weapon' },
+            { i: '✨', n: "Healer's Vestments", t: 'Chest Armor'      },
+            { i: '❤', n: 'Health Potion',       t: 'Consumable'       },
+        ],
+        power: { Mobility: 5, Damage: 6, Defense: 8, Utility: 10 }, ps: 3,
+        subs: {
+            warDomain:      { traitIcons: ['⚔','📢','❤'], abl: { g:'⚔', name:'HOLY CHARGE',  desc:'Rush an enemy, stun it, and deal divine damage in one motion', tags:['Melee','Stun','3T CD'] } },
+            lightDomain:    { traitIcons: ['✚','☀','✨'],  abl: { g:'☀', name:'SOLAR FLARE',  desc:'Blast of holy light blinds and burns all visible enemies at once', tags:['AOE','Blind','4T CD'] } },
+            twilightDomain: { traitIcons: ['🌙','🌑','✦'], abl: { g:'🌙', name:'VEIL OF DUSK', desc:'Shroud yourself — cut incoming damage and move unseen', tags:['Defense','Stealth','4T CD'] } },
+        },
+    },
+};
+
+const _CS_DIFF_LABELS = ['','Beginner','Easy','Medium','Hard','Expert'];
+
+
+// ── SVG Hero Art ──────────────────────────────────────────────────────────────
+function _csSvgWarrior(c,rgb){return`<defs><radialGradient id="wg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="${c}" stop-opacity=".55"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></radialGradient><filter id="wf"><feGaussianBlur stdDeviation="6"/></filter><filter id="wfs"><feGaussianBlur stdDeviation="3"/></filter></defs><ellipse cx="140" cy="210" rx="115" ry="155" fill="url(#wg)" opacity=".38" filter="url(#wf)"/><g opacity=".88"><polygon points="162,58 170,66 108,308 100,300" fill="${c}" opacity=".7"/><rect x="82" y="168" width="78" height="10" rx="3" fill="${c}" opacity=".9"/><rect x="128" y="178" width="8" height="58" rx="2" fill="rgba(255,255,255,.4)"/><circle cx="132" cy="242" r="8" fill="${c}" opacity=".8"/></g><g opacity=".83"><path d="M57 138 L57 238 Q57 268 87 288 Q117 308 117 288 L117 138 Q117 118 87 118 Q57 118 57 138Z" fill="rgba(${rgb},.14)" stroke="${c}" stroke-width="1.5"/><line x1="87" y1="148" x2="87" y2="268" stroke="${c}" stroke-width="1" opacity=".45"/><line x1="62" y1="208" x2="112" y2="208" stroke="${c}" stroke-width="1" opacity=".45"/><circle cx="87" cy="208" r="12" fill="rgba(${rgb},.22)" stroke="${c}" stroke-width="1"/></g><path d="M97 53 Q97 23 140 18 Q183 23 183 53 L183 88 L97 88Z" fill="rgba(${rgb},.18)" stroke="${c}" stroke-width="1.5"/><rect x="110" y="63" width="63" height="18" rx="2" fill="rgba(${rgb},.1)" stroke="${c}" stroke-width="1"/><rect x="117" y="69" width="18" height="5" rx="2" fill="${c}" opacity=".9"><animate attributeName="opacity" values=".9;.4;.9" dur="2s" repeatCount="indefinite"/></rect><rect x="147" y="69" width="18" height="5" rx="2" fill="${c}" opacity=".9"><animate attributeName="opacity" values=".4;.9;.4" dur="2s" repeatCount="indefinite"/></rect><path d="M102 88 L92 198 Q92 218 140 218 Q188 218 188 198 L178 88Z" fill="rgba(${rgb},.1)" stroke="${c}" stroke-width="1" opacity=".8"/><path d="M97 88 Q72 93 67 118 L97 108Z" fill="rgba(${rgb},.3)" stroke="${c}" stroke-width="1"/><path d="M183 88 Q208 93 213 118 L183 108Z" fill="rgba(${rgb},.3)" stroke="${c}" stroke-width="1"/><ellipse cx="140" cy="358" rx="78" ry="14" fill="${c}" opacity=".08" filter="url(#wf)"/>`;}
+
+function _csSvgRogue(c,rgb){return`<defs><radialGradient id="rg" cx="50%" cy="42%" r="52%"><stop offset="0%" stop-color="${c}" stop-opacity=".5"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></radialGradient><filter id="rf"><feGaussianBlur stdDeviation="8"/></filter><filter id="rfs"><feGaussianBlur stdDeviation="3"/></filter></defs><ellipse cx="140" cy="175" rx="98" ry="138" fill="url(#rg)" opacity=".45" filter="url(#rf)"/><path d="M102 88 Q52 138 22 318 Q52 348 82 343 Q92 258 102 168Z" fill="rgba(${rgb},.07)" stroke="${c}" stroke-width=".5" opacity=".65"><animateTransform attributeName="transform" type="rotate" values="-1 102 200;1 102 200;-1 102 200" dur="4s" repeatCount="indefinite"/></path><path d="M178 88 Q228 138 258 318 Q228 348 198 343 Q188 258 178 168Z" fill="rgba(${rgb},.07)" stroke="${c}" stroke-width=".5" opacity=".65"><animateTransform attributeName="transform" type="rotate" values="1 178 200;-1 178 200;1 178 200" dur="4.5s" repeatCount="indefinite"/></path><path d="M102 83 Q102 28 140 23 Q178 28 178 83 L163 93 Q153 86 140 84 Q127 86 117 93Z" fill="rgba(${rgb},.17)" stroke="${c}" stroke-width="1.5"/><path d="M117 73 Q117 58 140 55 Q163 58 163 73 L163 93 Q153 86 140 84 Q127 86 117 93Z" fill="rgba(0,0,0,.62)"/><ellipse cx="128" cy="76" rx="5" ry="4" fill="${c}"><animate attributeName="opacity" values="1;.3;1" dur="3s" repeatCount="indefinite"/></ellipse><ellipse cx="152" cy="76" rx="5" ry="4" fill="${c}"><animate attributeName="opacity" values=".3;1;.3" dur="3s" repeatCount="indefinite"/></ellipse><ellipse cx="128" cy="76" rx="8" ry="6" fill="${c}" opacity=".28" filter="url(#rfs)"/><ellipse cx="152" cy="76" rx="8" ry="6" fill="${c}" opacity=".28" filter="url(#rfs)"/><path d="M117 93 L112 198 Q112 213 140 213 Q168 213 168 198 L163 93Z" fill="rgba(${rgb},.09)" stroke="${c}" stroke-width=".8"/><path d="M115 108 Q90 148 75 178" stroke="${c}" stroke-width="8" stroke-linecap="round" fill="none" opacity=".38"/><polygon points="70,173 78,170 55,278 47,275" fill="${c}" opacity=".85"/><rect x="58" y="230" width="24" height="5" rx="1" fill="${c}" opacity=".7"/><path d="M165 108 Q190 148 205 178" stroke="${c}" stroke-width="8" stroke-linecap="round" fill="none" opacity=".38"/><polygon points="210,173 202,170 225,278 233,275" fill="${c}" opacity=".85"/><rect x="198" y="230" width="24" height="5" rx="1" fill="${c}" opacity=".7"/><ellipse cx="140" cy="353" rx="83" ry="17" fill="${c}" opacity=".1" filter="url(#rf)"/>`;}
+
+function _csSvgMage(c,rgb){return`<defs><radialGradient id="mg" cx="50%" cy="35%" r="55%"><stop offset="0%" stop-color="${c}" stop-opacity=".55"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></radialGradient><filter id="mf"><feGaussianBlur stdDeviation="8"/></filter><filter id="mfs"><feGaussianBlur stdDeviation="3"/></filter></defs><circle cx="140" cy="178" r="128" fill="none" stroke="${c}" stroke-width=".5" opacity=".18"><animateTransform attributeName="transform" type="rotate" values="0 140 178;360 140 178" dur="22s" repeatCount="indefinite"/></circle><circle cx="140" cy="178" r="94" fill="none" stroke="${c}" stroke-width=".3" opacity=".28" stroke-dasharray="4 8"><animateTransform attributeName="transform" type="rotate" values="360 140 178;0 140 178" dur="16s" repeatCount="indefinite"/></circle><ellipse cx="140" cy="158" rx="88" ry="118" fill="url(#mg)" opacity=".45" filter="url(#mf)"/><rect x="148" y="28" width="5" height="298" rx="2" fill="rgba(${rgb},.48)" stroke="${c}" stroke-width=".5"/><circle cx="150" cy="33" r="22" fill="rgba(${rgb},.14)" stroke="${c}" stroke-width="1.5"/><circle cx="150" cy="33" r="14" fill="${c}" opacity=".6"><animate attributeName="opacity" values=".6;.92;.6" dur="2s" repeatCount="indefinite"/><animate attributeName="r" values="14;16;14" dur="2s" repeatCount="indefinite"/></circle><circle cx="150" cy="33" r="7" fill="white" opacity=".82"/><circle cx="150" cy="33" r="28" fill="${c}" opacity=".18" filter="url(#mfs)"/><path d="M115 98 Q105 198 90 328 L110 333 Q120 228 130 108Z" fill="rgba(${rgb},.09)" stroke="${c}" stroke-width=".8"/><path d="M145 98 Q155 198 170 328 L150 333 Q140 228 130 108Z" fill="rgba(${rgb},.09)" stroke="${c}" stroke-width=".8"/><path d="M110 93 Q110 38 130 33 Q150 38 150 93 L140 98Z" fill="rgba(${rgb},.17)" stroke="${c}" stroke-width="1.5"/><ellipse cx="124" cy="73" rx="4" ry="3" fill="${c}"><animate attributeName="opacity" values=".8;1;.8" dur="2.5s" repeatCount="indefinite"/></ellipse><ellipse cx="138" cy="73" rx="4" ry="3" fill="${c}"><animate attributeName="opacity" values="1;.8;1" dur="2.5s" repeatCount="indefinite"/></ellipse><circle cx="95" cy="208" r="12" fill="${c}" opacity=".28" filter="url(#mfs)"><animate attributeName="r" values="10;14;10" dur="1.8s" repeatCount="indefinite"/></circle><circle cx="95" cy="208" r="5" fill="${c}" opacity=".82"><animate attributeName="opacity" values=".82;1;.82" dur="1.8s" repeatCount="indefinite"/></circle><ellipse cx="130" cy="353" rx="88" ry="17" fill="${c}" opacity=".05" filter="url(#mf)"/>`;}
+
+function _csSvgCleric(c,rgb){return`<defs><radialGradient id="clg" cx="50%" cy="40%" r="55%"><stop offset="0%" stop-color="${c}" stop-opacity=".6"/><stop offset="100%" stop-color="${c}" stop-opacity="0"/></radialGradient><filter id="clf"><feGaussianBlur stdDeviation="7"/></filter><filter id="clfs"><feGaussianBlur stdDeviation="3"/></filter></defs><ellipse cx="140" cy="170" rx="110" ry="140" fill="url(#clg)" opacity=".4" filter="url(#clf)"/><line x1="140" y1="40" x2="140" y2="220" stroke="${c}" stroke-width=".8" opacity=".22"/><line x1="50" y1="130" x2="230" y2="130" stroke="${c}" stroke-width=".8" opacity=".22"/><line x1="83" y1="63" x2="197" y2="197" stroke="${c}" stroke-width=".5" opacity=".15"/><line x1="197" y1="63" x2="83" y2="197" stroke="${c}" stroke-width=".5" opacity=".15"/><circle cx="140" cy="58" r="32" fill="none" stroke="${c}" stroke-width="1.5" opacity=".7"><animateTransform attributeName="transform" type="rotate" values="0 140 58;360 140 58" dur="12s" repeatCount="indefinite"/></circle><circle cx="140" cy="58" r="26" fill="none" stroke="${c}" stroke-width=".5" opacity=".4" stroke-dasharray="3 5"/><circle cx="140" cy="58" r="16" fill="${c}" opacity=".12" filter="url(#clfs)"/><rect x="176" y="100" width="5" height="140" rx="2" fill="rgba(${rgb},.55)" stroke="${c}" stroke-width=".5"/><rect x="163" y="90" width="31" height="24" rx="4" fill="rgba(${rgb},.28)" stroke="${c}" stroke-width="1.5"/><circle cx="179" cy="102" r="8" fill="${c}" opacity=".6"><animate attributeName="opacity" values=".6;.9;.6" dur="2s" repeatCount="indefinite"/></circle><line x1="179" y1="95" x2="179" y2="109" stroke="rgba(255,255,255,.7)" stroke-width="2"/><line x1="172" y1="102" x2="186" y2="102" stroke="rgba(255,255,255,.7)" stroke-width="2"/><path d="M108 95 L95 310 Q95 335 140 335 Q185 335 185 310 L172 95Z" fill="rgba(${rgb},.1)" stroke="${c}" stroke-width=".8"/><path d="M108 90 Q108 40 140 35 Q172 40 172 90 L157 98 Q150 92 140 90 Q130 92 123 98Z" fill="rgba(${rgb},.2)" stroke="${c}" stroke-width="1.5"/><path d="M123 75 Q123 58 140 55 Q157 58 157 75 L157 98 Q150 92 140 90 Q130 92 123 98Z" fill="rgba(0,0,0,.55)"/><ellipse cx="132" cy="76" rx="4" ry="3" fill="${c}"><animate attributeName="opacity" values=".85;.4;.85" dur="3s" repeatCount="indefinite"/></ellipse><ellipse cx="148" cy="76" rx="4" ry="3" fill="${c}"><animate attributeName="opacity" values=".4;.85;.4" dur="3s" repeatCount="indefinite"/></ellipse><line x1="140" y1="120" x2="140" y2="150" stroke="${c}" stroke-width="1.5" opacity=".55"/><line x1="128" y1="132" x2="152" y2="132" stroke="${c}" stroke-width="1.5" opacity=".55"/><circle cx="112" cy="200" r="2.5" fill="${c}" opacity=".5"><animate attributeName="cy" values="200;130;200" dur="4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".5;0;.5" dur="4s" repeatCount="indefinite"/></circle><circle cx="168" cy="240" r="2" fill="${c}" opacity=".4"><animate attributeName="cy" values="240;170;240" dur="5.5s" repeatCount="indefinite"/><animate attributeName="opacity" values=".4;0;.4" dur="5.5s" repeatCount="indefinite"/></circle><ellipse cx="140" cy="355" rx="80" ry="14" fill="${c}" opacity=".08" filter="url(#clf)"/>`;}
+
+const _CS_SVG = { warrior:_csSvgWarrior, rogue:_csSvgRogue, mage:_csSvgMage, cleric:_csSvgCleric };
+
+
+// ── Particle System ────────────────────────────────────────────────────────────
+let _csPts=[], _csPtRaf=null, _csPtFc=0;
+let _csResizeHandler=null;
+let _csCurRgb={r:224,g:68,b:68}, _csTgtRgb={r:224,g:68,b:68};
+let _csPtCtx=null;
+
+function _csLerpRgb(a,b,t){return{r:a.r+(b.r-a.r)*t,g:a.g+(b.g-a.g)*t,b:a.b+(b.b-a.b)*t};}
+function _csParseRgb(s){const[r,g,b]=s.split(',').map(Number);return{r,g,b};}
+
+function csInitParticles(){
+    const cv=document.getElementById('cs-ptcl-canvas');
+    if(!cv)return;
+    _csPtCtx=cv.getContext('2d');
+    _csPts=[];_csPtFc=0;
+    // Reuse one resize handler across visits so re-entering character-select
+    // doesn't stack a fresh listener each time (which would leak).
+    if(_csResizeHandler) window.removeEventListener('resize',_csResizeHandler);
+    _csResizeHandler=()=>{cv.width=window.innerWidth;cv.height=window.innerHeight;};
+    _csResizeHandler();
+    window.addEventListener('resize',_csResizeHandler);
+    if(_csPtRaf)cancelAnimationFrame(_csPtRaf);
+    _csPtLoop();
+}
+
+function _csPtLoop(){
+    const cs=document.getElementById('class-select');
+    if(!cs||cs.style.display==='none'){_csPtRaf=null;return;}
+    _csPtRaf=requestAnimationFrame(_csPtLoop);_csPtFc++;
+    _csCurRgb=_csLerpRgb(_csCurRgb,_csTgtRgb,0.018);
+    const ctx=_csPtCtx,cv=document.getElementById('cs-ptcl-canvas');
+    if(!ctx||!cv)return;
+    const W=cv.width,H=cv.height,lp=W*0.44,c=_csCurRgb;
+    ctx.clearRect(0,0,W,H);
+    if(_csPtFc%3===0)_csPts.push({x:Math.random()*lp,y:H+8,vx:(Math.random()-.5)*.35,vy:-(0.28+Math.random()*.75),sz:1+Math.random()*2.2,a:0,ma:.28+Math.random()*.38,life:0,ml:110+Math.random()*170,fog:false,r:c.r,g:c.g,b:c.b});
+    if(_csPtFc%58===0)_csPts.push({x:Math.random()*lp,y:H+8,vx:(Math.random()-.5)*.12,vy:-(0.04+Math.random()*.08),sz:70+Math.random()*110,a:0,ma:.02+Math.random()*.025,life:0,ml:420+Math.random()*580,fog:true,r:c.r,g:c.g,b:c.b});
+    _csPts=_csPts.filter(p=>{
+        p.life++;p.x+=p.vx;p.y+=p.vy;
+        const pr=p.life/p.ml;
+        p.a=pr<.15?(pr/.15)*p.ma:pr>.7?((1-pr)/.3)*p.ma:p.ma;
+        if(p.fog){const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.sz);g.addColorStop(0,`rgba(${p.r},${p.g},${p.b},${p.a})`);g.addColorStop(1,`rgba(${p.r},${p.g},${p.b},0)`);ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();}
+        else{ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fillStyle=`rgba(${p.r},${p.g},${p.b},${p.a})`;ctx.fill();}
+        return p.life<p.ml&&p.y>-20;
+    });
+    if(_csPts.length>160)_csPts=_csPts.slice(-160);
 }
 
 
-function renderClassList() {
-    const list = document.getElementById('cs-class-list');
-    if (!list) return;
-    list.innerHTML = Object.entries(CLASS_META).map(([id, meta]) => {
-        const isActive = ccState.className === id;
-        return `
-        <div class="cs-class-card${isActive ? ' cs-class-active' : ''}" style="--cc:${CLASS_COLOR[id] || 'var(--gold)'}">
-            <span class="cs-class-accent"></span>
-            <div class="cs-class-top" onclick="selectClass('${id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')selectClass('${id}')">
-                <span class="cs-class-icon" data-letter="${meta.name.slice(0,1)}"><img src="${CLASS_ICON_IMG[id]}?v=${GAME_VERSION}" alt="${meta.name}" class="cs-class-icon-img" onerror="this.closest('.cs-class-icon').classList.add('cs-icon-missing')" /></span>
-                <span class="cs-class-info">
-                    <span class="cs-class-name">${meta.name}</span>
-                    <span class="cs-class-desc">${meta.desc.replace(/\n/g, ' · ')}</span>
-                </span>
-                <span class="cs-class-expand-caret" aria-hidden="true">${isActive ? '\u25BE' : '\u25B8'}</span>
-            </div>
-            <div class="cs-class-ability" onclick="selectClass('${id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')selectClass('${id}')">${CLASSES[id]?.ability || 'Special Ability'}</div>
-            ${isActive ? `<div class="cs-class-expanded" id="cs-class-expanded-${id}"></div>` : ''}
-        </div>
-    `;
-    }).join('');
-    if (ccState.className) renderClassExpanded();
+// ── Render Helpers ─────────────────────────────────────────────────────────────
+function _csSetAccent(color,rgb){
+    document.documentElement.style.setProperty('--cs-acc',color);
+    document.documentElement.style.setProperty('--cs-acc-rgb',rgb);
+    _csTgtRgb=_csParseRgb(rgb);
 }
 
+function _csCountUp(el,target,ms){
+    ms=ms||700;const s=performance.now();
+    const go=n=>{const t=Math.min((n-s)/ms,1),e=1-Math.pow(1-t,3);el.textContent=Math.round(target*e);if(t<1)requestAnimationFrame(go);};
+    requestAnimationFrame(go);
+}
 
-function selectClass(className) {
-    // Re-clicking the already-open card collapses it instead of re-opening
-    // to the same state — a quick way to back out of a choice without
-    // hunting for a separate "cancel" control.
-    if (ccState.className === className) {
-        ccState.className = null;
-        ccState.subclassId = null;
-    } else {
-        ccState.className = className;
-        ccState.subclassId = null;
+function _csGetStats(sc,className){
+    const s=sc.stats;
+    const out=[{l:'\u2665 HP',v:s.hp,mx:160},{l:'\u2694 ATK',v:s.atk,mx:20},{l:'\uD83D\uDEE1 DEF',v:s.def,mx:15}];
+    if(s.maxMana>0)out.push({l:'\u2736 MANA',v:s.maxMana,mx:45});
+    else if(className==='rogue')out.push({l:'\u26A1 CRIT',v:sc.id==='assassin'?40:20,mx:100});
+    else out.push({l:'\uD83D\uDCAA PWR',v:s.atk+s.def,mx:35});
+    return out;
+}
+
+function _csRenderStats(sc,className){
+    const el=document.getElementById('cs-stats');if(!el)return;
+    const stats=_csGetStats(sc,className);
+    el.style.gridTemplateColumns=`repeat(${stats.length},1fr)`;
+    el.innerHTML=stats.map(({l,v,mx})=>`<div class="csn-sc"><span class="csn-sc-lbl">${l}</span><span class="csn-sc-val" data-v="${v}" data-mx="${mx}">0</span><div class="csn-bar-wrap"><div class="csn-bar" style="width:0%"></div></div></div>`).join('');
+    requestAnimationFrame(()=>setTimeout(()=>{
+        el.querySelectorAll('.csn-sc-val').forEach(v=>{
+            _csCountUp(v,+v.dataset.v);
+            const bar=v.nextElementSibling.querySelector('.csn-bar');
+            if(bar)bar.style.width=(+v.dataset.v/+v.dataset.mx*100)+'%';
+        });
+    },40));
+}
+
+function _csRenderTraits(sc,className){
+    const el=document.getElementById('cs-tab-traits');if(!el)return;
+    const icons=((CS_DISPLAY_DATA[className]||{}).subs||{})[sc.id]&&CS_DISPLAY_DATA[className].subs[sc.id].traitIcons||[];
+    el.innerHTML=`<div class="csn-traits">${sc.traits.map((t,i)=>`<div class="csn-trait"><div class="csn-t-ico">${icons[i]||'\u2022'}</div><span>${t}</span></div>`).join('')}</div>`;
+}
+
+function _csRenderGear(className){
+    const el=document.getElementById('cs-tab-gear');if(!el)return;
+    const gear=(CS_DISPLAY_DATA[className]||{}).gear||[];
+    el.innerHTML=`<div class="csn-gear">${gear.map(({i,n,t})=>`<div class="csn-gear-item"><span class="csn-g-ico">${i}</span><div><div class="csn-g-name">${n}</div><div class="csn-g-type">${t}</div></div></div>`).join('')}</div>`;
+}
+
+function _csRenderPower(className){
+    const el=document.getElementById('cs-tab-power');if(!el)return;
+    const d=CS_DISPLAY_DATA[className]||{};const power=d.power||{};const ps=d.ps||0;
+    el.innerHTML=`<div class="csn-power"><div class="csn-pw-stars">${Array.from({length:5},(_,i)=>`<span class="csn-pw-s${i<ps?' on':''}">${i<ps?'&#9733;':'&#9734;'}</span>`).join('')}</div>${Object.entries(power).map(([lbl,v])=>`<div class="csn-pw-row"><span class="csn-pw-lbl">${lbl}</span><div class="csn-pw-bw"><div class="csn-pw-b" style="width:0%" data-w="${v*10}"></div></div><span class="csn-pw-v">${v}</span></div>`).join('')}</div>`;
+    requestAnimationFrame(()=>setTimeout(()=>{el.querySelectorAll('.csn-pw-b[data-w]').forEach(b=>{b.style.width=b.dataset.w+'%';});},40));
+}
+
+function _csUpdateAbility(sc,className){
+    const subDisp=((CS_DISPLAY_DATA[className]||{}).subs||{})[sc.id]||{};
+    const abl=subDisp.abl||{};
+    const g=document.getElementById('cs-abl-glyph'),n=document.getElementById('cs-abl-name'),d=document.getElementById('cs-abl-desc'),t=document.getElementById('cs-abl-tags');
+    // Fall back to the subclass's own ability name from SUBCLASSES if no
+    // display-data ability is defined, so the card is never blank.
+    const fallbackName = (sc.abilities && sc.abilities[0]) || (sc.special) || sc.name;
+    if(g)g.textContent=abl.g||'\u2726';
+    if(n){n.textContent=abl.name||fallbackName||'';n.style.color='#fff';n.style.display='block';}
+    if(d){d.textContent=abl.desc||(sc.tagline||'');d.style.display='block';}
+    if(t)t.innerHTML=(abl.tags||[]).map(tag=>`<span class="csn-tag">${tag}</span>`).join('');
+}
+
+function _csDailyStatus(){
+    const el=document.getElementById('cc-daily-status');if(!el)return;
+    const rec=getDailyRecord();
+    if(rec){el.textContent=`Today's Daily: you ${rec.won?'conquered it!':'reached Floor '+rec.floor} — play again to beat it.`;}
+    else{const s=getDailyPlayCount();el.textContent=s>0?`${s} daily challenge${s===1?'':'s'} played. Today's dungeon awaits.`:'New every day at midnight UTC — the same dungeon for everyone.';}
+}
+
+function _csInitInputs(){
+    const ni=document.getElementById('char-name-input'),si=document.getElementById('seed-code-input'),sh=document.getElementById('seed-code-hint');
+    if(ni)ni.addEventListener('keydown',e=>{if(e.key==='Enter')confirmCharacter();});
+    if(si){
+        si.addEventListener('keydown',e=>{if(e.key==='Enter')confirmCharacter();});
+        si.addEventListener('input',()=>{
+            const raw=si.value.trim();
+            if(!raw){sh.textContent='';sh.className='cs-seed-hint';return;}
+            const decoded=codeToSeed(raw);
+            if(decoded===null){sh.textContent='Invalid — codes use 2-9 and A-Z only (no 0,1,I,L,O).';sh.className='cs-seed-hint cs-seed-hint-bad';}
+            else{sh.textContent='';sh.className='cs-seed-hint';}
+        });
     }
-    renderClassList();
 }
 
-
-function selectSubclass(className, subclassId) {
-    ccState.className = className;
-    ccState.subclassId = subclassId;
-    renderClassExpanded();
+function csTab(name,btn){
+    document.querySelectorAll('.csn-tab-btn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    document.querySelectorAll('.csn-tab-pane').forEach(p=>p.classList.remove('on'));
+    const pane=document.getElementById('cs-tab-'+name);if(pane)pane.classList.add('on');
 }
 
-
-function selectGender(gender) {
-    ccState.gender = gender;
-    renderClassExpanded();
+function csSetGender(g,btn){
+    ccState.gender=g;
+    document.querySelectorAll('.csn-g-btn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    const img=document.getElementById('cs-portrait-img');
+    if(img){img.src=`${ccState.className}-${g}.png`;img.style.display='';}
+    // Refresh the large left-panel hero portrait to match the new gender
+    const color=CLASS_COLOR[ccState.className]||'#c8922a';
+    const rgb=parseInt(color.slice(1,3),16)+','+parseInt(color.slice(3,5),16)+','+parseInt(color.slice(5,7),16);
+    _csUpdateHeroArt(ccState.className,color,rgb,false);
 }
 
+// Shows the real class/gender portrait PNG (e.g. warrior-m.png) in the left
+// panel. If the image is missing or fails to load, falls back to the animated
+// SVG silhouette so there's never an empty frame.
+function _csUpdateHeroArt(id, color, rgb, skip){
+    const img = document.getElementById('cs-hero-img');
+    const svg = document.getElementById('cs-hero-svg');
+    const gender = (ccState && ccState.gender) || 'm';
 
-// Renders the inline-expanded content for whichever class card is
-// currently selected — subclass chips, then (once a subclass is also
-// picked) stats/traits/gear/name/seed/Begin Descent. This used to be a
-// separate "Character Dossier" panel that sat empty and visually
-// competed with the actual class-pick decision; folding it into the
-// selected card itself means there's never an empty box on screen, and
-// the 4 class cards stay the dominant visual element regardless of
-// selection state.
-function renderClassExpanded() {
-    const el = document.getElementById(`cs-class-expanded-${ccState.className}`);
-    if (!el) return;
-    console.log('[CharSelect] renderClassExpanded build=market-split-v2 gender=' + ccState.gender);
+    // Always build the SVG fallback so it's ready behind the image.
+    if (svg && _CS_SVG[id]) {
+        Object.assign(svg.style, { width:'88%', maxHeight:'78%',
+            filter:`drop-shadow(0 0 36px rgba(${rgb},0.38))`,
+            transition:'opacity 0.3s,transform 0.3s' });
+        svg.innerHTML = _CS_SVG[id](color, rgb);
+    }
 
-    const subclasses = SUBCLASSES[ccState.className];
-    const sc = ccState.subclassId ? subclasses.find(s => s.id === ccState.subclassId) : null;
-
-    const chipsHtml = `
-        <div class="cs-subclass-chips">
-            ${subclasses.map(s => `
-                <button class="cs-chip${ccState.subclassId === s.id ? ' cs-chip-active' : ''}" onclick="selectSubclass('${ccState.className}', '${s.id}')">${s.name}</button>
-            `).join('')}
-        </div>
-    `;
-
-    if (!sc) {
-        el.innerHTML = `
-            ${chipsHtml}
-            <p class="cs-preview-hint">Select a path for your ${capitalize(ccState.className)} to review their traits.</p>
-        `;
+    if (!img) {
+        if (svg) svg.style.display = 'block';
         return;
     }
 
-    const gear = STARTING_GEAR[ccState.className] || [];
-    const statCount = 3 + (sc.stats.maxMana > 0 ? 1 : 0);
-    const statsGridStyle = statCount < 4 ? ` style="grid-template-columns: repeat(${statCount}, 1fr)"` : '';
-
-    el.innerHTML = `
-        ${chipsHtml}
-        <div class="cs-preview-card">
-            <div class="cs-preview-hero">
-                <span class="cs-preview-glyph"><img src="${CLASS_ICON_IMG[ccState.className]}" alt="${capitalize(ccState.className)}" class="cs-preview-glyph-img" /></span>
-                <div class="cs-preview-heading">
-                    <h3 class="cs-preview-name">${sc.name}</h3>
-                    <p class="cs-preview-tagline">${sc.tagline}</p>
-                    ${sc.special ? `<span class="cs-preview-special">${sc.special}</span>` : ''}
-                </div>
-            </div>
-            <div class="cs-preview-stats"${statsGridStyle}>
-                <div class="cs-pstat"><small>HP</small><span>${sc.stats.hp}</span></div>
-                <div class="cs-pstat"><small>ATK</small><span>${sc.stats.atk}</span></div>
-                <div class="cs-pstat"><small>DEF</small><span>${sc.stats.def}</span></div>
-                ${sc.stats.maxMana > 0 ? `<div class="cs-pstat"><small>Mana</small><span>${sc.stats.maxMana}</span></div>` : ''}
-            </div>
-            <div class="cs-preview-cols">
-                <div class="cs-preview-col">
-                    <div class="cs-heading-label">Traits</div>
-                    ${sc.traits.map(t => `<div class="cs-trait">${t}</div>`).join('')}
-                </div>
-                <div class="cs-preview-col">
-                    <div class="cs-heading-label">Starting Gear</div>
-                    ${gear.map(g => `<div class="cs-gear-item">&#10003; ${g}</div>`).join('')}
-                </div>
-            </div>
-            <div class="cs-preview-footer">
-                <div class="cs-gender-row">
-                    <span class="cs-name-label">Appearance</span>
-                    <div class="cs-gender-btns">
-                        <button class="cs-gender-btn${ccState.gender === 'm' ? ' cs-gender-active' : ''}" data-select-gender="m" aria-pressed="${ccState.gender === 'm'}" type="button">&#9794; Male</button>
-                        <button class="cs-gender-btn${ccState.gender === 'f' ? ' cs-gender-active' : ''}" data-select-gender="f" aria-pressed="${ccState.gender === 'f'}" type="button">&#9792; Female</button>
-                    </div>
-                    <img class="cs-portrait-preview"
-                         src="${ccState.className}-${ccState.gender}.png"
-                         alt="${capitalize(ccState.className)} portrait"
-                         onerror="this.style.display='none'"
-                         onload="this.style.display=''" />
-                </div>
-                <div class="cs-preview-name-row">
-                    <label class="cs-name-label" for="char-name-input">Name <span>(optional — defaults to ${sc.name})</span></label>
-                    <input class="cc-name-input" id="char-name-input" type="text" maxlength="16" placeholder="${sc.name}" autocomplete="off" />
-                </div>
-                <div class="cs-preview-seed-row">
-                    <label class="cs-seed-label" for="seed-code-input">Seed Code <span>(optional — leave blank for a random dungeon)</span></label>
-                    <input class="cc-seed-input" id="seed-code-input" type="text" maxlength="7" placeholder="e.g. 3P7Y2CZ" autocomplete="off" />
-                    <span class="cs-seed-hint" id="seed-code-hint"></span>
-                </div>
-                <label class="cc-ironman-row" for="ironman-toggle">
-                    <input type="checkbox" id="ironman-toggle" class="cc-ironman-checkbox" />
-                    <span class="cc-ironman-label">Ironman Oath</span>
-                    <span class="cc-ironman-desc">No Bank, no Shared Stash this run — but +8% gold find and +5% rarity odds for the whole descent.</span>
-                </label>
-                <div class="cc-button-row">
-                    <button class="cc-confirm-btn" onclick="confirmCharacter()">Begin Descent</button>
-                    <button class="cc-daily-btn" onclick="startDailyChallenge()" title="Everyone plays the same dungeon today. Same seed worldwide — see how deep you get.">
-                        \u2600 Daily Challenge
-                    </button>
-                </div>
-                <p class="cc-daily-status" id="cc-daily-status"></p>
-            </div>
-        </div>
-    `;
-
-    // Wire gender buttons: update ccState + toggle classes IN-PLACE.
-    // Deliberately avoids calling renderClassExpanded() (which replaces the
-    // entire el.innerHTML) because Chrome freezes the event-dispatch path at
-    // fire-time — DOM changes during bubbling can let stale parent handlers
-    // run and reset state. Toggling classes directly sidesteps all of that.
-    el.querySelectorAll('[data-select-gender]').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.stopPropagation();
-            e.preventDefault();
-            ccState.gender = btn.dataset.selectGender;
-            // Toggle active class on all gender buttons without re-rendering
-            el.querySelectorAll('[data-select-gender]').forEach(b => {
-                b.classList.toggle('cs-gender-active', b.dataset.selectGender === ccState.gender);
-                b.setAttribute('aria-pressed', String(b.dataset.selectGender === ccState.gender));
-            });
-            // Update the portrait preview image in-place
-            const portrait = el.querySelector('.cs-portrait-preview');
-            if (portrait) {
-                portrait.src = `${ccState.className}-${ccState.gender}.png`;
-                portrait.style.display = '';
-            }
-        });
+    // Style the portrait frame
+    Object.assign(img.style, {
+        maxWidth:'90%', maxHeight:'82%', width:'auto', height:'auto',
+        objectFit:'contain', borderRadius:'10px',
+        filter:`drop-shadow(0 0 38px rgba(${rgb},0.45))`,
+        transition:'opacity 0.3s, transform 0.3s',
     });
 
-    const input = document.getElementById('char-name-input');
-    if (input) {
-        input.addEventListener('keydown', e => { if (e.key === 'Enter') confirmCharacter(); });
-    }
+    if (!skip) { img.style.opacity = '0'; img.style.transform = 'scale(.94)'; }
 
-    // Ensure Begin Descent is visible — the expanded card can be taller than
-    // the viewport, so scroll it into view each time a subclass is picked.
-    const confirmBtn = el.querySelector('.cc-confirm-btn');
-    if (confirmBtn) {
-        confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    // Daily Challenge status — tells the player whether they've already played
-    // today's daily and how they did, turning the button into a "come back
-    // tomorrow" loop.
-    const dailyStatus = document.getElementById('cc-daily-status');
-    if (dailyStatus) {
-        const rec = getDailyRecord();
-        if (rec) {
-            const result = rec.won ? 'conquered it!' : `reached Floor ${rec.floor}`;
-            dailyStatus.textContent = `Today's Daily: you ${result} Play again to beat it — your best for the day is kept.`;
-        } else {
-            const streak = getDailyPlayCount();
-            dailyStatus.textContent = streak > 0
-                ? `${streak} daily challenge${streak === 1 ? '' : 's'} played. Today's dungeon awaits.`
-                : `New every day at midnight UTC — the same dungeon for everyone.`;
+    img.onload = () => {
+        img.style.display = 'block';
+        if (svg) svg.style.display = 'none';
+        if (!skip) setTimeout(() => { img.style.opacity='1'; img.style.transform='scale(1)'; }, 40);
+        else { img.style.opacity='1'; img.style.transform='scale(1)'; }
+    };
+    img.onerror = () => {
+        // Portrait missing → show the animated SVG instead.
+        img.style.display = 'none';
+        if (svg) {
+            svg.style.display = 'block';
+            if (!skip) { svg.style.opacity='0'; svg.style.transform='scale(.94)';
+                setTimeout(() => { svg.style.opacity='1'; svg.style.transform='scale(1)'; }, 60); }
+            else { svg.style.opacity='1'; svg.style.transform='scale(1)'; }
         }
-    }
-    const seedInput = document.getElementById('seed-code-input');
-    const seedHint = document.getElementById('seed-code-hint');
-    if (seedInput) {
-        seedInput.addEventListener('keydown', e => { if (e.key === 'Enter') confirmCharacter(); });
-        // Live-validate as the player types — codeToSeed returns null for
-        // any character outside the seed alphabet, which lets us flag a
-        // typo (e.g. an accidental 0/O or 1/I/L, deliberately excluded
-        // from the alphabet) before they hit Begin Descent rather than
-        // after, when they'd be staring at a dungeon wondering if the
-        // code "took."
-        seedInput.addEventListener('input', () => {
-            const raw = seedInput.value.trim();
-            if (!raw) { seedHint.textContent = ''; seedHint.className = 'cs-seed-hint'; return; }
-            const decoded = codeToSeed(raw);
-            if (decoded === null) {
-                seedHint.textContent = 'Invalid character — codes only use 2-9 and A-Z (no 0, 1, I, L, O).';
-                seedHint.className = 'cs-seed-hint cs-seed-hint-bad';
-            } else {
-                seedHint.textContent = '';
-                seedHint.className = 'cs-seed-hint';
-            }
-        });
-    }
+    };
+    img.src = `${id}-${gender}.png?v=${typeof GAME_VERSION!=='undefined'?GAME_VERSION:'1'}`;
 }
+
+
+function _csPickClass(id,skip){
+    const d=CS_DISPLAY_DATA[id]||{};
+    const color=CLASS_COLOR[id]||'#c8922a';
+    const rgb=parseInt(color.slice(1,3),16)+','+parseInt(color.slice(3,5),16)+','+parseInt(color.slice(5,7),16);
+    ccState.className=id;ccState.subclassId=null;
+    _csSetAccent(color,rgb);
+
+    document.querySelectorAll('.csn-cls-tab').forEach((b,i)=>{
+        b.classList.toggle('on',Object.keys(CLASS_META)[i]===id);
+    });
+
+    // ── Hero art: prefer the real portrait PNG, fall back to SVG ──────────────
+    _csUpdateHeroArt(id, color, rgb, skip);
+
+    const nm=document.getElementById('cs-cls-name');
+    if(nm){
+        if(!skip){nm.style.cssText='opacity:0;transform:translateY(8px);transition:opacity .22s,transform .22s';setTimeout(()=>{nm.textContent=(CLASS_META[id]||{name:id}).name.toUpperCase();nm.style.cssText='opacity:1;transform:translateY(0);transition:opacity .22s,transform .22s';},80);}
+        else nm.textContent=(CLASS_META[id]||{name:id}).name.toUpperCase();
+    }
+    const tg=document.getElementById('cs-cls-tag');if(tg)tg.textContent=d.tag||'';
+    const lr=document.getElementById('cs-lore');if(lr)lr.textContent=d.lore||'';
+    const st=document.getElementById('cs-stars');
+    if(st)st.innerHTML=Array.from({length:5},(_,i)=>`<span class="${i<(d.diff||0)?'csn-s-on':'csn-s-off'}">&#9733;</span>`).join('');
+    const dl=document.getElementById('cs-diff-lbl');if(dl)dl.textContent='Difficulty: '+(_CS_DIFF_LABELS[d.diff]||'');
+
+    ['cs-stats','cs-abl-glyph','cs-abl-name','cs-abl-desc','cs-abl-tags'].forEach(id2=>{const e=document.getElementById(id2);if(e)e.innerHTML='';});
+
+    _csRenderGear(id);_csRenderPower(id);
+
+    const pills=document.getElementById('cs-subclass-pills');
+    if(pills){const subs=SUBCLASSES[id]||[];pills.innerHTML=subs.map(s=>`<button class="csn-sc-pill" onclick="selectSubclass('${id}','${s.id}')">${s.name}</button>`).join('');}
+
+    // Auto-select the first subclass so the stats / ability / config panels are
+    // populated immediately — no half-empty "broken-looking" intermediate state.
+    const firstSub=(SUBCLASSES[id]||[])[0];
+    if(firstSub){
+        selectSubclass(id,firstSub.id);
+    } else {
+        const hint=document.getElementById('cs-pick-hint'),inp=document.getElementById('cs-config-inputs');
+        if(hint)hint.style.display='';if(inp)inp.style.display='none';
+    }
+
+    _csDailyStatus();
+}
+
+
+// ── Entry Points ───────────────────────────────────────────────────────────────
+function renderClassSelect(){
+    ccState={className:null,subclassId:null,gender:'m'};
+
+    // ── Force full-screen layout via inline styles ────────────────────────────
+    // The game-container ancestor has position:relative which prevents
+    // position:fixed from escaping to the viewport. Inline styles beat any
+    // external CSS rule regardless of specificity, so this is bulletproof.
+    const _cs  = document.getElementById('class-select');
+    const _rt  = document.getElementById('cs-new-root');
+    const _lp  = document.getElementById('cs-left-panel');
+    const _rp  = document.getElementById('cs-right-panel');
+    const _aw  = document.querySelector('.cs-art-wrap');
+    const _cv  = document.getElementById('cs-ptcl-canvas');
+    const _tb  = document.getElementById('cs-class-tabs');
+    const _pp  = document.getElementById('cs-subclass-pills');
+
+    if (_cs) Object.assign(_cs.style, {
+        position:'fixed', top:'0', left:'0', right:'0', bottom:'0',
+        width:'100vw', height:'100vh', maxHeight:'100vh', maxWidth:'none',
+        margin:'0', padding:'0', border:'none', borderRadius:'0',
+        boxShadow:'none', overflow:'hidden', background:'#07050a',
+        color:'#e8ddd0', zIndex:'100',
+    });
+    if (_rt) Object.assign(_rt.style, {
+        display:'grid', gridTemplateColumns:'42% 1fr',
+        width:'100vw', height:'100vh', position:'relative', zIndex:'1',
+    });
+    if (_lp) Object.assign(_lp.style, {
+        display:'flex', flexDirection:'column', alignItems:'center',
+        height:'100vh', overflow:'hidden', position:'relative',
+        borderRight:'1px solid rgba(var(--cs-acc-rgb),0.15)',
+    });
+    if (_aw) Object.assign(_aw.style, {
+        flex:'1', width:'100%', minHeight:'0', position:'relative',
+        display:'flex', alignItems:'center', justifyContent:'center',
+    });
+    if (_rp) Object.assign(_rp.style, {
+        display:'flex', flexDirection:'column', height:'100vh',
+        overflowY:'auto', padding:'22px 26px', gap:'14px', boxSizing:'border-box',
+    });
+    if (_cv) Object.assign(_cv.style, {
+        position:'absolute', inset:'0', width:'100%', height:'100%',
+        pointerEvents:'none', zIndex:'0',
+    });
+    if (_tb) Object.assign(_tb.style, {
+        display:'flex', gap:'2px', padding:'14px 14px 0',
+        width:'100%', flexShrink:'0', zIndex:'2',
+    });
+    if (_pp) Object.assign(_pp.style, {
+        display:'flex', gap:'8px', padding:'0 18px 18px',
+        width:'100%', flexShrink:'0', zIndex:'2',
+    });
+
+    csInitParticles();_csInitInputs();
+    const tabsEl=document.getElementById('cs-class-tabs');
+    if(tabsEl)tabsEl.innerHTML=Object.entries(CLASS_META).map(([id,meta])=>`<button class="csn-cls-tab" onclick="selectClass('${id}')">${meta.name}</button>`).join('');
+    _csPickClass(Object.keys(CLASS_META)[0],true);
+}
+
+function renderClassList(){/* no-op — kept for compatibility */}
+
+function selectClass(className){_csPickClass(className,false);}
+
+function selectSubclass(className,subclassId){
+    ccState.className=className;ccState.subclassId=subclassId;
+    const sc=(SUBCLASSES[className]||[]).find(s=>s.id===subclassId);if(!sc)return;
+    document.querySelectorAll('.csn-sc-pill').forEach(p=>p.classList.toggle('on',p.textContent.trim()===sc.name));
+    _csRenderStats(sc,className);_csRenderTraits(sc,className);_csRenderGear(className);_csRenderPower(className);_csUpdateAbility(sc,className);
+    const hint=document.getElementById('cs-pick-hint'),inp=document.getElementById('cs-config-inputs');
+    if(hint)hint.style.display='none';if(inp)inp.style.display='block';
+    const img=document.getElementById('cs-portrait-img');if(img){img.src=`${className}-${ccState.gender}.png`;img.style.display='';}
+    const ni=document.getElementById('char-name-input');if(ni)ni.placeholder=(CLASS_META[className]||{name:sc.name}).name;
+}
+
+function selectGender(gender){
+    ccState.gender=gender;
+    const img=document.getElementById('cs-portrait-img');if(img){img.src=`${ccState.className}-${gender}.png`;img.style.display='';}
+}
+
+function renderClassExpanded(){/* no-op — new design handles via selectSubclass() */}
+
 
 
 function confirmCharacter() {
@@ -1603,10 +2042,18 @@ document.addEventListener('keydown', event => {
         if (event.key === 'Escape' || event.key.toLowerCase() === 'o') closeSettings();
         return;
     }
-    if (!gameState.player) return;
+    if (!gameState.player) {
+        // Profile/Trophy can be opened from the character-select tavern (no run).
+        if (event.key === 'Escape' && gameState.trophyOpen) { closeTrophyHall(); return; }
+        if (event.key === 'Escape' && gameState.profileOpen) { closeProfile(); return; }
+        return;
+    }
 
     try {
         if (event.key === 'Escape') {
+            if (gameState.stableOpen) { closeStable(); return; }
+            if (gameState.trophyOpen) { closeTrophyHall(); return; }
+            if (gameState.profileOpen) { closeProfile(); return; }
             if (gameState.spellbookOpen) { closeSpellbook(); return; }
             if (gameState.settingsOpen) { closeSettings(); return; }
             if (gameState.bestiaryOpen) { closeBestiary(); return; }
