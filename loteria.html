@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>La Lotería — standalone</title>
+<title>La Loter&#xED;a &#x2014; standalone</title>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap">
 <style>
-/* ═══════════════════════════════════════════════════════════════════════════
-   La Lotería — STANDALONE
-   A self-contained Mexican Lotería that runs on its own, with no dependency on
-   The Broken Flagon's runtime (no gameState / gameMeta / shared CSS). It reuses
-   only the pure game engine in js/loteria.js. Coins are tracked locally in the
-   browser via localStorage, so progress persists between visits but is entirely
-   separate from the main game's economy.
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* 
+   La Loteria - STANDALONE
+   A self-contained Mexican Loteria that runs on its own, with no dependency on
+   The Broken Flagon's runtime (no gameState / gameMeta / shared CSS). The game
+   engine is inlined below, so this is ONE self-contained file with no other
+   dependencies. Coins are tracked locally in the browser via localStorage, so
+   progress persists between visits but is entirely separate from the main game.
+    */
 :root {
     --loteria-accent: #ff5e8a;   /* rosa mexicano */
     --loteria-gold:   #ffd65a;
@@ -87,7 +87,7 @@ body {
 }
 #loteria-header button:hover { border-color: var(--loteria-accent); }
 
-/* ── Setup screen ── */
+/*  Setup screen  */
 .loteria-tagline {
     color: var(--muted);
     font-size: 13.5px;
@@ -173,7 +173,7 @@ body {
 }
 .loteria-setup-note { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 12px; font-style: italic; }
 
-/* ── Play screen ── */
+/*  Play screen  */
 #loteria-play-top {
     display: flex;
     gap: 18px;
@@ -268,7 +268,7 @@ body {
 @keyframes loteria-flash { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 #loteria-called-count { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
-/* ── Tabla boards ── */
+/*  Tabla boards  */
 #loteria-tablas {
     display: flex;
     gap: 16px;
@@ -319,7 +319,7 @@ body {
 .loteria-tablas-count-3 .loteria-cell-name,
 .loteria-tablas-count-4 .loteria-cell-name { display: none; }
 
-/* A cell whose card is being called right now — invites the click. */
+/* A cell whose card is being called right now - invites the click. */
 .loteria-cell-live {
     box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 18px rgba(255,214,90,0.7);
     animation: loteria-live-pulse 0.8s ease-in-out infinite;
@@ -328,7 +328,7 @@ body {
     0%,100% { box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 14px rgba(255,214,90,0.5); }
     50%     { box-shadow: 0 0 0 3px var(--loteria-gold), 0 0 24px rgba(255,214,90,0.9); }
 }
-/* A marked cell — the bean (frijol) sits on top. */
+/* A marked cell - the bean (frijol) sits on top. */
 .loteria-cell-marked { filter: saturate(0.6) brightness(0.82); cursor: default; }
 .loteria-cell-marked:hover { transform: none; }
 .loteria-bean {
@@ -344,7 +344,7 @@ body {
 }
 @keyframes loteria-bean-drop { from { transform: scale(1.8); opacity: 0; } to { transform: scale(1); opacity: 0.85; } }
 
-/* ── Lotería full-card art (sprites/loteria/<id>.png), optional ── */
+/*  Loteria full-card art (sprites/loteria/<id>.png), optional  */
 .loteria-cell-art {
     position: absolute;
     inset: 0;
@@ -361,7 +361,7 @@ body {
 .loteria-cell-hasart .loteria-cell-name { display: none; }
 .loteria-cell-hasart { background: transparent; padding: 0; }
 
-/* ── Result overlay ── */
+/*  Result overlay  */
 #loteria-result-overlay {
     position: fixed;
     inset: 0;
@@ -414,13 +414,13 @@ body {
 <body>
     <div id="loteria-inner">
         <div id="loteria-header">
-            <h2>La Lotería</h2>
+            <h2>La Loter&#xED;a</h2>
             <span id="loteria-coins-display"></span>
             <button id="loteria-reset-btn" title="Refill your purse to keep playing">Refill purse</button>
         </div>
 
         <div id="loteria-setup">
-            <p class="loteria-tagline">The caller draws cards one by one. Click each card on your tabla before the next is called — miss it and the mark is lost. Complete the announced pattern to win.</p>
+            <p class="loteria-tagline">The caller draws cards one by one. Click each card on your tabla before the next is called &#x2014; miss it and the mark is lost. Complete the announced pattern to win.</p>
 
             <div class="loteria-setup-row">
                 <span class="loteria-setup-label">Tabla</span>
@@ -442,14 +442,14 @@ body {
                     <div class="loteria-caller-label">Now calling</div>
                     <div id="loteria-current-card">
                         <div id="loteria-current-glyph">&#127183;</div>
-                        <div id="loteria-current-name">—</div>
+                        <div id="loteria-current-name">&#x2014;</div>
                     </div>
                     <div id="loteria-current-verse"></div>
                     <div id="loteria-pace-bar-track"><div id="loteria-pace-bar"></div></div>
                 </div>
                 <div id="loteria-goal-area">
                     <div class="loteria-goal-label">Win pattern</div>
-                    <div id="loteria-goal-pattern">—</div>
+                    <div id="loteria-goal-pattern">&#x2014;</div>
                     <div id="loteria-goal-mini"></div>
                     <div id="loteria-progress-note"></div>
                     <div id="loteria-called-count"></div>
@@ -468,16 +468,305 @@ body {
         </div>
     </div>
 
-    <!-- The pure game engine, shared with The Broken Flagon. No game runtime is
-         loaded — only this self-contained logic file. -->
-    <script src="js/loteria.js"></script>
+    <!-- The pure game engine, inlined so this is one self-contained file. -->
     <script>
-    // ═══════════════════════════════════════════════════════════════════════
-    // Standalone UI — drives the engine in js/loteria.js with a local, browser
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// THE BROKEN FLAGON \u2014 Loter\u00eda (traditional Mexican board game)
+//
+// A faithful Loter\u00eda: a caller (el grit\u00f3n) draws cards one at a time from the
+// 54-card deck; the player marks matching images on their tabla(s) by clicking
+// before the next card is called. Win by completing the round's announced
+// pattern and the payout is paid in Flagon Coins.
+//
+// DESIGN (locked with the player):
+//   \u2022 Currency: Flagon Coins (buy tabla, win coins).
+//   \u2022 Pace: player-chosen \u2014 faster calling = bigger payout multiplier.
+//   \u2022 Marking: MANUAL. Click the card on your tabla before it scrolls past.
+//     Miss the click window and that mark is lost (skill + tension).
+//   \u2022 Pattern: a RANDOM pattern is announced each round.
+//   \u2022 Round end: caller runs until a win, or the 54-card deck is exhausted.
+//   \u2022 Multiple tabla: the player may buy 1\u20134 tabla for one round (more cost,
+//     more coverage, bigger total stake).
+//
+// This file is the ENGINE \u2014 pure logic, no DOM. It is unit-tested headless
+// before any UI is built on top, the same discipline used for the lottery.
+// The UI layer lives in loteria-ui.js and only calls into these functions.
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+
+// \u2500\u2500 The 54 traditional cards \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// id = canonical number (1\u201354), name = traditional Spanish name, glyph = a
+// unicode stand-in so the game is fully playable before custom art is added
+// (drop art into sprites/loteria/<id>.png later and the UI swaps it in, exactly
+// like the enemy-sprite contract elsewhere in the game). Verses are the
+// traditional/known riddles the caller can announce for flavor; kept short.
+const LOTERIA_DECK = [
+    { id: 1,  name: 'El Gallo',       glyph: '\ud83d\udc13', verse: 'El que le cant\u00f3 a San Pedro.' },
+    { id: 2,  name: 'El Diablito',    glyph: '\ud83d\ude08', verse: 'P\u00f3rtate bien cuatito, si no te lleva el coloradito.' },
+    { id: 3,  name: 'La Dama',        glyph: '\ud83d\udc69', verse: 'La dama puliendo el paso.' },
+    { id: 4,  name: 'El Catr\u00edn',      glyph: '\ud83c\udfa9', verse: 'Don Ferruco en la alameda.' },
+    { id: 5,  name: 'El Paraguas',    glyph: '\u2602\ufe0f', verse: 'Para el sol y para el agua.' },
+    { id: 6,  name: 'La Sirena',      glyph: '\ud83e\udddc', verse: 'Con los cantos de sirena, no te vayas a marear.' },
+    { id: 7,  name: 'La Escalera',    glyph: '\ud83e\ude9c', verse: 'S\u00fabeme paso a pasito.' },
+    { id: 8,  name: 'La Botella',     glyph: '\ud83c\udf7e', verse: 'La herramienta del borracho.' },
+    { id: 9,  name: 'El Barril',      glyph: '\ud83d\udee2\ufe0f', verse: 'Tanto bebi\u00f3 el alba\u00f1il, que qued\u00f3 como barril.' },
+    { id: 10, name: 'El \u00c1rbol',       glyph: '\ud83c\udf33', verse: 'El que a buen \u00e1rbol se arrima.' },
+    { id: 11, name: 'El Mel\u00f3n',       glyph: '\ud83c\udf48', verse: 'Me lo das o me lo quitas.' },
+    { id: 12, name: 'El Valiente',    glyph: '\ud83d\udd2a', verse: 'Por qu\u00e9 le corres cobarde.' },
+    { id: 13, name: 'El Gorrito',     glyph: '\ud83d\udc52', verse: 'Ponle su gorrito al nene.' },
+    { id: 14, name: 'La Muerte',      glyph: '\ud83d\udc80', verse: 'La muerte tilica y flaca.' },
+    { id: 15, name: 'La Pera',        glyph: '\ud83c\udf50', verse: 'El que espera, desespera.' },
+    { id: 16, name: 'La Bandera',     glyph: '\ud83c\uddf2\ud83c\uddfd', verse: 'Verde, blanco y colorado.' },
+    { id: 17, name: 'El Bandol\u00f3n',    glyph: '\ud83e\ude95', verse: 'Tocando su bandol\u00f3n.' },
+    { id: 18, name: 'El Violoncello', glyph: '\ud83c\udfbb', verse: 'Creciendo se fue hasta el cielo.' },
+    { id: 19, name: 'La Garza',       glyph: '\ud83e\udda2', verse: 'Al otro lado del r\u00edo.' },
+    { id: 20, name: 'El P\u00e1jaro',      glyph: '\ud83d\udc26', verse: 'T\u00fa me traes a puros brincos.' },
+    { id: 21, name: 'La Mano',        glyph: '\u270b', verse: 'La mano de un criminal.' },
+    { id: 22, name: 'La Bota',        glyph: '\ud83d\udc62', verse: 'Una bota igual que la otra.' },
+    { id: 23, name: 'La Luna',        glyph: '\ud83c\udf19', verse: 'El farol de los enamorados.' },
+    { id: 24, name: 'El Cotorro',     glyph: '\ud83e\udd9c', verse: 'Cotorro cotorro saca la pata.' },
+    { id: 25, name: 'El Borracho',    glyph: '\ud83c\udf7a', verse: 'Ah qu\u00e9 borracho tan necio.' },
+    { id: 26, name: 'El Negrito',     glyph: '\ud83e\uddd1\ud83c\udfff', verse: 'El que se comi\u00f3 el az\u00facar.' },
+    { id: 27, name: 'El Coraz\u00f3n',     glyph: '\u2764\ufe0f', verse: 'No me extra\u00f1es coraz\u00f3n.' },
+    { id: 28, name: 'La Sand\u00eda',      glyph: '\ud83c\udf49', verse: 'La barriga que Juan ten\u00eda.' },
+    { id: 29, name: 'El Tambor',      glyph: '\ud83e\udd41', verse: 'No te arrugues cuero viejo.' },
+    { id: 30, name: 'El Camar\u00f3n',     glyph: '\ud83e\udd90', verse: 'Camar\u00f3n que se duerme, se lo lleva la corriente.' },
+    { id: 31, name: 'Las Jaras',      glyph: '\ud83c\udff9', verse: 'Las jaras del indio Ad\u00e1n.' },
+    { id: 32, name: 'El M\u00fasico',      glyph: '\ud83c\udfba', verse: 'El m\u00fasico trompas de hule.' },
+    { id: 33, name: 'La Ara\u00f1a',       glyph: '\ud83d\udd77\ufe0f', verse: 'Atar\u00e1ntamela a palos.' },
+    { id: 34, name: 'El Soldado',     glyph: '\ud83d\udc82', verse: 'Uno, dos y tres, el soldado p\'al cuartel.' },
+    { id: 35, name: 'La Estrella',    glyph: '\u2b50', verse: 'La gu\u00eda de los marineros.' },
+    { id: 36, name: 'El Cazo',        glyph: '\ud83e\udd58', verse: 'El caso que te hago es poco.' },
+    { id: 37, name: 'El Mundo',       glyph: '\ud83c\udf0e', verse: 'Este mundo es una bola.' },
+    { id: 38, name: 'El Apache',      glyph: '\ud83e\uddd1\u200d\ud83e\uddb0', verse: 'Ah, Chihuahua, cu\u00e1nto apache.' },
+    { id: 39, name: 'El Nopal',       glyph: '\ud83c\udf35', verse: 'Al nopal lo van a ver, nom\u00e1s cuando tiene tunas.' },
+    { id: 40, name: 'El Alacr\u00e1n',     glyph: '\ud83e\udd82', verse: 'El que con la cola pica.' },
+    { id: 41, name: 'La Rosa',        glyph: '\ud83c\udf39', verse: 'Rosita, Rosaura.' },
+    { id: 42, name: 'La Calavera',    glyph: '\u2620\ufe0f', verse: 'Al pasar por el pante\u00f3n.' },
+    { id: 43, name: 'La Campana',     glyph: '\ud83d\udd14', verse: 'T\u00fa con la campana y yo con tu hermana.' },
+    { id: 44, name: 'El Cantarito',   glyph: '\ud83c\udffa', verse: 'Tanto va el c\u00e1ntaro al agua, que se quiebra.' },
+    { id: 45, name: 'El Venado',      glyph: '\ud83e\udd8c', verse: 'Saltando va buscando.' },
+    { id: 46, name: 'El Sol',         glyph: '\u2600\ufe0f', verse: 'La cobija de los pobres.' },
+    { id: 47, name: 'La Corona',      glyph: '\ud83d\udc51', verse: 'El sombrero de los reyes.' },
+    { id: 48, name: 'La Chalupa',     glyph: '\ud83d\udef6', verse: 'Rema que rema Lupita.' },
+    { id: 49, name: 'El Pino',        glyph: '\ud83c\udf32', verse: 'Fresco y oloroso, en todo tiempo hermoso.' },
+    { id: 50, name: 'El Pescado',     glyph: '\ud83d\udc1f', verse: 'El que por la boca muere.' },
+    { id: 51, name: 'La Palma',       glyph: '\ud83c\udf34', verse: 'Palmero, sube a la palma.' },
+    { id: 52, name: 'La Maceta',      glyph: '\ud83e\udeb4', verse: 'El que nace pa\' maceta, no sale del corredor.' },
+    { id: 53, name: 'El Arpa',        glyph: '\ud83c\udfbc', verse: 'Arpa vieja de mi suegra.' },
+    { id: 54, name: 'La Rana',        glyph: '\ud83d\udc38', verse: 'Al ver a la verde rana.' },
+];
+
+// \u2500\u2500 Tunables (locked with the player) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+const LOTERIA_TABLA_COST = 40;     // Flagon Coins per tabla for a round
+const LOTERIA_MAX_TABLA  = 4;      // buy up to 4 tabla at once
+const LOTERIA_TABLA_SIZE = 16;     // 4\u00d74 board
+const LOTERIA_GRID = 4;
+
+// Pace options: faster = less time to react = higher payout multiplier.
+const LOTERIA_PACES = [
+    { id: 'relaxed', label: 'Relaxed', secPerCall: 3.5, payoutMult: 0.9 },
+    { id: 'classic', label: 'Classic', secPerCall: 2.5, payoutMult: 1.1 },
+    { id: 'fast',    label: 'Fast',    secPerCall: 1.6, payoutMult: 1.4 },
+];
+
+// Winning patterns. A round announces ONE at random. Each pattern carries a
+// `winSets`: an array of winning cell-sets (each a list of 4\u00d74 indices 0\u201315).
+// A tabla satisfies the pattern when ANY ONE of its winSets is fully marked.
+// This lets "L\u00ednea" win on any single row, column, or diagonal, while the
+// shaped patterns (corners/center/full) each have exactly one winSet.
+const LOTERIA_PATTERNS = (() => {
+    const N = LOTERIA_GRID;
+    const idx = (r, c) => r * N + c;
+    const rows = [], cols = [];
+    for (let r = 0; r < N; r++) rows.push(Array.from({length:N}, (_,c)=>idx(r,c)));
+    for (let c = 0; c < N; c++) cols.push(Array.from({length:N}, (_,r)=>idx(r,c)));
+    const diagA = Array.from({length:N}, (_,i)=>idx(i,i));
+    const diagB = Array.from({length:N}, (_,i)=>idx(i,N-1-i));
+    return [
+        // L\u00ednea \u2014 any full row, column, or diagonal.
+        { id: 'linea',   label: 'L\u00ednea (any line)',        winSets: [...rows, ...cols, diagA, diagB] },
+        // Four Corners.
+        { id: 'corners', label: 'Four Corners',            winSets: [[idx(0,0), idx(0,N-1), idx(N-1,0), idx(N-1,N-1)]] },
+        // Center Four.
+        { id: 'center',  label: 'Center Four',             winSets: [[idx(1,1), idx(1,2), idx(2,1), idx(2,2)]] },
+        // Tabla Llena \u2014 the whole board.
+        { id: 'full',    label: 'Tabla Llena (full board)', winSets: [Array.from({length:N*N}, (_,i)=>i)] },
+    ];
+})();
+
+// \u2500\u2500 Seedable RNG (reuses the game's _mulberry32 if present) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function _loteriaRng(seed) {
+    if (typeof _mulberry32 === 'function') return _mulberry32(seed >>> 0);
+    let s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+function _loteriaShuffle(arr, rnd) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+// \u2500\u2500 Tabla generation \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// A tabla is 16 DISTINCT cards from the deck. Returns an array of 16 card ids.
+function generateTabla(rnd) {
+    const ids = LOTERIA_DECK.map(c => c.id);
+    return _loteriaShuffle(ids, rnd).slice(0, LOTERIA_TABLA_SIZE);
+}
+
+// \u2500\u2500 Round state \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// A round is a self-contained object (no global mutation) so it's easy to test
+// and the UI just holds one. Created by startLoteriaRound().
+function startLoteriaRound(opts) {
+    opts = opts || {};
+    const tablaCount = Math.max(1, Math.min(LOTERIA_MAX_TABLA, opts.tablaCount || 1));
+    const pace = LOTERIA_PACES.find(p => p.id === opts.paceId) || LOTERIA_PACES[1];
+    const seed = (opts.seed != null) ? opts.seed : (Date.now() ^ Math.floor(Math.random() * 0x7fffffff));
+    const rnd = _loteriaRng(seed);
+
+    // Build tabla(s).
+    const tablas = [];
+    for (let i = 0; i < tablaCount; i++) {
+        tablas.push({ cards: generateTabla(rnd), marked: new Array(LOTERIA_TABLA_SIZE).fill(false) });
+    }
+
+    // Shuffle the call order (the caller's deck).
+    const callOrder = _loteriaShuffle(LOTERIA_DECK.map(c => c.id), rnd);
+
+    // Announce a random winning pattern for this round.
+    const pattern = LOTERIA_PATTERNS[Math.floor(rnd() * LOTERIA_PATTERNS.length)];
+
+    const stake = tablaCount * LOTERIA_TABLA_COST;
+    return {
+        seed, pace, pattern, tablas,
+        callOrder,
+        callIndex: -1,            // index into callOrder of the current card (-1 = not started)
+        called: [],               // ids called so far, in order
+        currentCardId: null,      // the card on the table right now
+        markableUntil: null,      // (UI uses pace to enforce the click window)
+        stake,
+        tablaCount,
+        status: 'ready',          // ready \u2192 playing \u2192 won | lost
+        winningTabla: null,       // index of the tabla that won
+        payout: 0,
+    };
+}
+
+// Advance the caller to the next card. Returns the new current card object, or
+// null if the deck is exhausted (round lost if no win by then).
+function loteriaCallNext(round) {
+    if (round.status !== 'playing' && round.status !== 'ready') return null;
+    round.status = 'playing';
+    round.callIndex++;
+    if (round.callIndex >= round.callOrder.length) {
+        // Deck exhausted with no win.
+        round.currentCardId = null;
+        round.status = 'lost';
+        return null;
+    }
+    const id = round.callOrder[round.callIndex];
+    round.currentCardId = id;
+    round.called.push(id);
+    return getLoteriaCard(id);
+}
+
+// Attempt to mark a cell on a tabla. The rule: you may only mark the cell if it
+// matches the card CURRENTLY being called (manual, skill-based). Marking a cell
+// that doesn't match the current card does nothing (no penalty, just a miss).
+// Returns true if a mark was placed.
+function loteriaMark(round, tablaIdx, cellIdx) {
+    if (round.status !== 'playing') return false;
+    const tabla = round.tablas[tablaIdx];
+    if (!tabla) return false;
+    if (tabla.marked[cellIdx]) return false;                  // already marked
+    if (tabla.cards[cellIdx] !== round.currentCardId) return false; // not the called card
+    tabla.marked[cellIdx] = true;
+    return true;
+}
+
+// Check whether any tabla has completed the round's pattern. If so, marks the
+// round won, records which tabla and the payout. Returns true on a win.
+// Payout = stake \u00d7 pattern difficulty \u00d7 pace multiplier (see _loteriaPatternMult).
+function loteriaCheckWin(round) {
+    if (round.status !== 'playing') return false;
+    for (let t = 0; t < round.tablas.length; t++) {
+        const tabla = round.tablas[t];
+        const complete = round.pattern.winSets.some(set => set.every(ci => tabla.marked[ci]));
+        if (complete) {
+            round.status = 'won';
+            round.winningTabla = t;
+            round.payout = computeLoteriaPayout(round);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Difficulty multiplier by pattern \u2014 harder patterns pay more. Tuned together
+// with the pace multipliers (relaxed 0.9 \u2026 fast 1.4) so that a win NEVER costs
+// coins: even the easiest pattern (L\u00ednea) at the slowest pace returns more than
+// the stake. The full board (the hardest) pays the real bonus.
+function _loteriaPatternMult(patternId) {
+    if (patternId === 'full') return 2.2;        // tabla llena \u2014 hardest, best payout
+    if (patternId === 'corners') return 1.6;     // four corners
+    if (patternId === 'center')  return 1.6;     // center four
+    return 1.2;                                  // l\u00ednea (any line) \u2014 easiest
+}
+
+// Payout in Flagon Coins for a won round.
+function computeLoteriaPayout(round) {
+    const base = round.stake;                    // what they paid in
+    const patMult = _loteriaPatternMult(round.pattern.id);
+    const paceMult = round.pace.payoutMult;
+    // Net winnings are generous but bounded. A win always returns at least the
+    // stake (the floor below makes that a hard guarantee, not just a tuning
+    // accident), so completing the announced pattern never leaves you poorer.
+    return Math.max(base, Math.round(base * patMult * paceMult));
+}
+
+// \u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function getLoteriaCard(id) { return LOTERIA_DECK.find(c => c.id === id) || null; }
+
+// How many marks short of the announced pattern is the player's best tabla?
+// With multi-winSet patterns (L\u00ednea), this is the fewest marks remaining across
+// ANY winning line on ANY tabla \u2014 the closest the player is to calling Loter\u00eda.
+// (UI uses this to show "1 to go!" tension.) Returns { tablaIdx, remaining }.
+function loteriaBestProgress(round) {
+    const patternSize = round.pattern.winSets.reduce((m, s) => Math.min(m, s.length), Infinity);
+    let best = { tablaIdx: 0, remaining: patternSize };
+    round.tablas.forEach((tabla, t) => {
+        round.pattern.winSets.forEach(set => {
+            const remaining = set.filter(ci => !tabla.marked[ci]).length;
+            if (remaining < best.remaining) best = { tablaIdx: t, remaining };
+        });
+    });
+    return best;
+}
+
+// A cell is "missable" if the called card matches it but it isn't marked yet \u2014
+// i.e. the player still needs to click it before the next call. UI uses this to
+// know when a mark opportunity was missed (for the skill/tension rule).
+function loteriaPendingMarks(round) {
+    const out = [];
+    if (round.currentCardId == null) return out;
+    round.tablas.forEach((tabla, t) => {
+        tabla.cards.forEach((cardId, c) => {
+            if (cardId === round.currentCardId && !tabla.marked[c]) out.push({ tablaIdx: t, cellIdx: c });
+        });
+    });
+    return out;
+}
+
+    </script>
+    <script>
+    // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+    // Standalone UI \u2014 drives the inlined engine above with a local, browser
     // persisted coin balance. Mirrors the in-game loteria-ui.js behaviour but
     // depends on nothing from the main game (no gameState, gameMeta, addMessage,
     // earnFlagonCoins, saveMetaProgress, updateUI).
-    // ═══════════════════════════════════════════════════════════════════════
+    // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
     (function () {
         'use strict';
 
@@ -490,7 +779,7 @@ body {
         let _paceRAF = null;
         let _callStartMs = 0;
 
-        // ── Coin purse (localStorage-backed, independent of the main game) ──
+        // \u2500\u2500 Coin purse (localStorage-backed, independent of the main game) \u2500\u2500
         function getCoins() {
             const raw = parseInt(localStorage.getItem(COINS_KEY), 10);
             if (Number.isFinite(raw) && raw >= 0) return raw;
@@ -507,13 +796,13 @@ body {
             if (el) el.innerHTML = `<span class="loteria-coin-icon">&#9679;</span> ${getCoins().toLocaleString()} Flagon Coins`;
         }
 
-        // ── Timers ──
+        // \u2500\u2500 Timers \u2500\u2500
         function stopTimers() {
             if (_callTimer) { clearTimeout(_callTimer); _callTimer = null; }
             if (_paceRAF) { cancelAnimationFrame(_paceRAF); _paceRAF = null; }
         }
 
-        // ── Setup screen ──
+        // \u2500\u2500 Setup screen \u2500\u2500
         function showSetup() {
             stopTimers();
             document.getElementById('loteria-setup').style.display = 'block';
@@ -536,7 +825,7 @@ body {
             LOTERIA_PACES.forEach(pace => {
                 const b = document.createElement('button');
                 b.className = 'loteria-choice loteria-choice-pace' + (_setup.paceId === pace.id ? ' loteria-choice-active' : '');
-                b.innerHTML = `<span class="loteria-pace-name">${pace.label}</span><span class="loteria-pace-mult">×${pace.payoutMult} payout</span>`;
+                b.innerHTML = `<span class="loteria-pace-name">${pace.label}</span><span class="loteria-pace-mult">\u00d7${pace.payoutMult} payout</span>`;
                 b.onclick = () => { _setup.paceId = pace.id; showSetup(); };
                 pp.appendChild(b);
             });
@@ -552,7 +841,7 @@ body {
             if (coins < stake) {
                 startBtn.disabled = true;
                 startBtn.classList.add('loteria-btn-disabled');
-                note.textContent = `You need ${stake - coins} more Flagon Coins to buy in — use “Refill purse”.`;
+                note.textContent = `You need ${stake - coins} more Flagon Coins to buy in \u2014 use \u201cRefill purse\u201d.`;
             } else {
                 startBtn.disabled = false;
                 startBtn.classList.remove('loteria-btn-disabled');
@@ -560,7 +849,7 @@ body {
             }
         }
 
-        // ── Start a round (buy in) ──
+        // \u2500\u2500 Start a round (buy in) \u2500\u2500
         function start() {
             const stake = _setup.tablaCount * LOTERIA_TABLA_COST;
             if (getCoins() < stake) return;
@@ -579,7 +868,7 @@ body {
             _callTimer = setTimeout(advance, 1400);
         }
 
-        // ── The caller loop ──
+        // \u2500\u2500 The caller loop \u2500\u2500
         function advance() {
             if (!_round || _round.status === 'won' || _round.status === 'lost') return;
 
@@ -613,7 +902,7 @@ body {
             step();
         }
 
-        // ── Rendering ──
+        // \u2500\u2500 Rendering \u2500\u2500
         function renderCurrentCard(card) {
             document.getElementById('loteria-current-glyph').textContent = card.glyph;
             document.getElementById('loteria-current-name').textContent = card.name;
@@ -638,7 +927,7 @@ body {
             const note = document.getElementById('loteria-progress-note');
             const best = loteriaBestProgress(_round);
             if (best.remaining === 0) note.textContent = '';
-            else if (best.remaining === 1) { note.textContent = '¡Una más! 1 to go!'; note.className = 'loteria-progress-hot'; }
+            else if (best.remaining === 1) { note.textContent = '\u00a1Una m\u00e1s! 1 to go!'; note.className = 'loteria-progress-hot'; }
             else { note.textContent = `${best.remaining} to go`; note.className = ''; }
 
             document.getElementById('loteria-called-count').textContent = `${_round.called.length} / 54 called`;
@@ -676,7 +965,7 @@ body {
             });
         }
 
-        // ── Marking (the skill mechanic) ──
+        // \u2500\u2500 Marking (the skill mechanic) \u2500\u2500
         function cellClick(tablaIdx, cellIdx) {
             if (!_round || _round.status !== 'playing') return;
             if (loteriaMark(_round, tablaIdx, cellIdx)) {
@@ -686,7 +975,7 @@ body {
             }
         }
 
-        // ── End of round ──
+        // \u2500\u2500 End of round \u2500\u2500
         function endRound(won) {
             stopTimers();
             const overlay = document.getElementById('loteria-result-overlay');
@@ -700,7 +989,7 @@ body {
                 if (payout > 0) addCoins(payout);
                 card.className = 'loteria-result-win';
                 icon.innerHTML = '&#127881;';
-                title.textContent = '¡Lotería!';
+                title.textContent = '\u00a1Loter\u00eda!';
                 text.innerHTML =
                     `You completed <strong>${_round.pattern.label}</strong> and won ` +
                     `<strong>${payout.toLocaleString()} Flagon Coins</strong>.`;
@@ -710,7 +999,7 @@ body {
                 title.textContent = 'The deck ran out';
                 text.innerHTML =
                     `No one completed <strong>${_round.pattern.label}</strong> this round. ` +
-                    `Better luck next time — the caller is ready to go again.`;
+                    `Better luck next time \u2014 the caller is ready to go again.`;
             }
             renderCoins();
             overlay.style.display = 'flex';
@@ -722,7 +1011,7 @@ body {
             showSetup();
         }
 
-        // ── Refill purse (keeps the standalone self-sufficient) ──
+        // \u2500\u2500 Refill purse (keeps the standalone self-sufficient) \u2500\u2500
         function refillPurse() {
             if (getCoins() >= STARTING_COINS) return;   // only top up when low
             setCoins(STARTING_COINS);
@@ -730,12 +1019,12 @@ body {
             showSetup();
         }
 
-        // ── Wire up ──
+        // \u2500\u2500 Wire up \u2500\u2500
         function init() {
             if (typeof startLoteriaRound !== 'function') {
                 document.getElementById('loteria-inner').innerHTML =
                     '<p style="color:#ff7a7a;font-family:monospace;padding:20px;">' +
-                    'Could not load the Lotería engine (js/loteria.js). Serve this page from the ' +
+                    'Could not load the Loter\u00eda engine (js/loteria.js). Serve this page from the ' +
                     'project folder (e.g. <code>python3 -m http.server</code>) so the script can load.</p>';
                 return;
             }
