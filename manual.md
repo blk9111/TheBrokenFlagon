@@ -2,7 +2,7 @@
 
 *A Dungeon Adventure*
 
-Version 1.12.0 · *"Many descend. Few return."*
+Version 1.13.0 · *"Many descend. Few return."*
 
 ---
 
@@ -587,7 +587,17 @@ Larger d-pad buttons, swipe gesture support, and single-column responsive layout
 
 # 14. Version History
 
-## 1.12.0
+## 1.13.0
+
+- **Arena Rivals:** Every champion keeps a persistent head-to-head record against you, shown on bout cards ("Iron Warden (2-3)"), in the fight banner, and on the Player Profile. Streaks earn flavor — your nemesis, or the ones you dominate.
+- **Player Profile:** A new read-only panel consolidating your identity — class/level, Pit fame and title, tavern renown, flagon coins, best floor, lifetime kills and gold, and every arena rivalry sorted by games played. Opens from the character-select tavern row.
+- **Hall of Legends:** A full-screen trophy hall with 11 earned titles (First Blood, The Delver, Deep Dweller, Abyss Walker, Conqueror of Ash, Bossbane, Pit Fighter, Crowd Favorite, Nemesis Slayer, Gold Baron, The Survivor), your records, and current Pit rank.
+- **Champion Intros:** The Pit Master announces each champion before a bout — a full dramatic crawl on the first encounter (and always for boss-tier), a short one-liner on rematches so the spectacle doesn't wear thin. Skippable.
+- **Tavern Reputation & Patrons:** The room now reacts to your Pit title when you enter, scaling from indifference to a standing ovation. Random patrons offer ambient overheard dialogue, some referencing your own deepest descents.
+- **Regional Dungeon Theming:** The 100 floors are now four named regions — the Ashen Crypt (1-25), the Forgotten Mines (26-50), the Sunken Cathedral (51-75), and the Frost Peaks (76-100) — each with its own enemy weighting, flavor, transition banner, and loot bonus. (Enemies still unlock by floor as before; regions only shift which eligible enemies appear.)
+- **Monster Stable:** A management panel for creatures captured this run — send them to fight in the Pit, sell them to a broker, or release them. (Captures are still lost on death.)
+- **Dev tooling:** The internal bot controller (developer-only) gained automated overnight testing with crash-proof data persistence. Not player-facing.
+
 
 - **Populated World Zones:** Forests now contain forage nodes (Wild Herbs, Ash Berries, Glowcap Mushrooms, Coin Pouches) and random events. Roads host a travelling merchant with rotating stock. Both zone types can trigger overland ambushes — real combat on the world map.
 - **Return-to-Tavern Portal System:** Mages and Clerics unlock Town Portal / Sanctuary Gate at Level 4 (6 mana). Warriors and Rogues buy a Hearthstone Coin from the innkeeper (40g) before diving. Floor 1 exits remain free for all classes.

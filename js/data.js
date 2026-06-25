@@ -1,4 +1,4 @@
-const GAME_VERSION = '1.12.0';
+const GAME_VERSION = '1.13.0';
 
 const DUNGEON_NAME = 'The Dungeon of Ash';
 
@@ -2497,6 +2497,18 @@ const STATUS_META = {
 // Entries are short, player-facing summaries; the manual's Version History
 // section carries the fuller writeup. Most recent first.
 const CHANGELOG = [
+    {
+        version: '1.13.0',
+        highlights: [
+            'Arena Rivals: every champion now remembers you. Win or lose, your head-to-head record follows you — "Iron Warden (2-3)" — surfaced on every bout card and called out as you step into the Pit. Build a nemesis, or a list of the ones you dominate.',
+            'A new Player Profile — one place to see who you\\u2019ve become: your Pit fame and title, tavern renown, flagon coins, best floor, lifetime kills and gold, and every arena rivalry, sorted by how often you\\u2019ve clashed.',
+            'The Hall of Legends. Eleven earned titles — from First Blood to Conqueror of Ash to Nemesis Slayer — each unlocked by your deeds, displayed alongside your records and current Pit rank.',
+            'The Pit Master speaks. Champions now get a proper introduction before a bout — a full dramatic crawl the first time you face them (and always for bosses), a quick line on the rematches, so the spectacle never wears thin.',
+            'The tavern reacts to your fame. Walk in as an Unknown and nobody looks up; walk in as a Legend and the room comes to its feet. Random patrons mutter overheard tales, some about your own deepest descents.',
+            'The dungeon now has regions. Descend through the Ashen Crypt, the Forgotten Mines, the Sunken Cathedral, and the Frost Peaks — each with its own character, enemy mix, and loot, announced as you cross into it.',
+            'A new Monster Stable: manage the creatures you\\u2019ve caged this run — send them to fight in the Pit, sell them to a broker, or set them free.',
+        ]
+    },
     {
         version: '1.12.0',
         highlights: [

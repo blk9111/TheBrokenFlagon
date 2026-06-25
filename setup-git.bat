@@ -58,7 +58,7 @@ if "%GITNAME%"=="" (
 
 REM Stage everything (respecting .gitignore) and make the first commit.
 git add -A
-git commit -m "Initial commit - The Broken Flagon v0.5.0" -m "Baseline snapshot of the full game: 18 JS files, styles, HTML, dev bot controller, and docs. See CHANGELOG.md for history."
+git commit -m "Initial commit - The Broken Flagon v1.13.0" -m "Baseline snapshot of the full game: 18 JS files, styles, HTML, dev bot controller, and docs. See CHANGELOG.md for history."
 
 echo.
 echo ============================================================
