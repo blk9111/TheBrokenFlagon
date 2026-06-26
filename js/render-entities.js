@@ -1259,6 +1259,3 @@ function drawDeathEffect(effect, progress, alpha) {
         ctx.stroke();
     }
 }
-
-
-function drawNoticeBoard() {

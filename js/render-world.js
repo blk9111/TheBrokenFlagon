@@ -3,6 +3,7 @@
 // magic dealer, market floor markers, market NPC details, town sign,
 // town details, and town-NPC helper. Loaded last.
 
+function drawNoticeBoard() {
     const nb = gameState.questBoard;
     const cx = nb.x * TILE_SIZE + TILE_SIZE / 2;
     // Board frame
