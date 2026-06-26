@@ -12795,13 +12795,12 @@ div[id$="-inner"]::before {
    framed treatment that matches the screen's gold-on-dark identity. */
 #cs-hero-img {
     display: block;
-    width: auto;
+    /* Fill the full width of the art column; height scales proportionally.
+       Previously width:auto kept the image at its native 209px — far too small
+       for a column that's ~620px wide. With width:100% the image stretches to
+       fill the column regardless of the source file's pixel dimensions. */
+    width: 100%;
     height: auto;
-    /* Was capped at 96% / min(72vh,620px), which left large empty black margins
-       above and below the portrait in the tall art column. Raise the caps so the
-       portrait fills the available space — bounded by the column height so it
-       never overflows past the subclass pills below it. */
-    max-width: 100%;
     max-height: min(88vh, 860px);
     object-fit: contain;
     border-radius: 14px;
@@ -12810,6 +12809,7 @@ div[id$="-inner"]::before {
         0 24px 70px rgba(0,0,0,0.6),
         0 0 60px rgba(var(--cs-acc-rgb), 0.22);
     transition: opacity 0.3s, transform 0.3s, box-shadow 0.5s;
+    animation: cs-port-breathe 3.8s ease-in-out infinite;
 }
 
 #cs-subclass-pills {
@@ -13018,10 +13018,7 @@ div[id$="-inner"]::before {
     to   { background-position: 54px 54px; }
 }
 
-/* Portrait — slow breathing glow (replaces static box-shadow) */
-#cs-hero-img {
-    animation: cs-port-breathe 3.8s ease-in-out infinite;
-}
+/* Portrait — slow breathing glow animation is defined on #cs-hero-img above */
 @keyframes cs-port-breathe {
     0%, 100% {
         box-shadow:
