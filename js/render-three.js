@@ -29,12 +29,12 @@ let _mistPos    = null; // Float32Array of xyz for each particle
 let _mistVel    = null; // Float32Array of vx, vy per particle
 const _MIST_COUNT = 220;
 
-// Base (unlit) tile colours — PointLights bring these to life at runtime
+// Base tile colours — dark stone; ambient + torch bring these to life
 const PAL = {
-    FLOOR:      [0.14, 0.10, 0.06],
-    FLOOR_EXIT: [0.06, 0.13, 0.08],
-    FLOOR_UP:   [0.09, 0.06, 0.14],
-    WALL:       [0.10, 0.07, 0.03],
+    FLOOR:      [0.28, 0.20, 0.12],  // warm stone
+    FLOOR_EXIT: [0.14, 0.28, 0.16],  // mossy green stairs-down
+    FLOOR_UP:   [0.18, 0.12, 0.28],  // cool purple stairs-up
+    WALL:       [0.22, 0.15, 0.08],  // darker warm stone
 };
 
 // Rarity → light colour map
@@ -69,14 +69,17 @@ function initThreeJS() {
     _camera.lookAt(0, 0, 0);
 
     // Lights
-    _ambientLight = new THREE.AmbientLight(0x18100a, 0.55);
+    // Ambient — raised so tiles stay visible even beyond the torch radius
+    _ambientLight = new THREE.AmbientLight(0x3a2a18, 1.2);
     _scene.add(_ambientLight);
 
-    _torchLight = new THREE.PointLight(0xff9820, 5.0, 400, 1.7);
+    // Primary torch — extended range covers the full dungeon
+    _torchLight = new THREE.PointLight(0xff9820, 4.5, 700, 1.4);
     _torchLight.position.z = 44;
     _scene.add(_torchLight);
 
-    _torchLight2 = new THREE.PointLight(0xffb840, 2.0, 220, 2.2);
+    // Offset secondary for richer flame look
+    _torchLight2 = new THREE.PointLight(0xffb840, 1.8, 350, 1.8);
     _torchLight2.position.z = 22;
     _scene.add(_torchLight2);
 
@@ -153,7 +156,7 @@ function updateThreeDungeon() {
     if (!_THREE_ACTIVE || !_renderer) return;
     const s = gameState;
     if (!s?.dungeon) return;
-    const dungeon = s.dungeon, revealed = s.revealed || [];
+    const dungeon = s.dungeon;
     const mapH = dungeon.length, mapW = dungeon[0]?.length || 0;
     const TS = TILE_SIZE, t = Date.now() * 0.001;
     let fi = 0, wi = 0, di = 0;
@@ -184,7 +187,11 @@ function updateThreeDungeon() {
                     _floorMesh.setColorAt(fi, _col); fi++;
                 }
             }
-            if (!revealed[ty]?.[tx] && di < _MAX_INST) {
+            // Only place dark overlay when a tile is *explicitly* marked unrevealed.
+            // If gameState.revealed is null/undefined (tavern init before revealAll()
+            // fires), treat every tile as visible — avoids a black blanket over tiles.
+            const isRevealed = !s.revealed || s.revealed[ty]?.[tx];
+            if (!isRevealed && di < _MAX_INST) {
                 _dummy.position.set(wx, wy, 0);
                 _dummy.rotation.set(0, 0, 0); _dummy.scale.set(1, 1, 1); _dummy.updateMatrix();
                 _darkMesh.setMatrixAt(di, _dummy.matrix); di++;
