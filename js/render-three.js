@@ -164,7 +164,21 @@ function _resizeThree() {
 function updateThreeDungeon() {
     if (!_THREE_ACTIVE || !_renderer) return;
     const s = gameState;
-    if (!s?.dungeon) return;
+    // If the dungeon is mid-rebuild (null/empty), HIDE the tile meshes rather
+    // than rendering stale geometry from the previous floor. The wall flash
+    // happens here: previously this returned without resetting counts, so
+    // last-frame's instances kept rendering at the wrong positions for one
+    // frame, then snapped back when the new dungeon arrived.
+    if (!s?.dungeon || !s.dungeon.length) {
+        if (_floorMesh) _floorMesh.count = 0;
+        if (_wallMesh)  _wallMesh.count  = 0;
+        if (_darkMesh)  _darkMesh.count  = 0;
+        if (_floorMesh) _floorMesh.instanceMatrix.needsUpdate = true;
+        if (_wallMesh)  _wallMesh.instanceMatrix.needsUpdate  = true;
+        if (_darkMesh)  _darkMesh.instanceMatrix.needsUpdate  = true;
+        _renderer.render(_scene, _camera);
+        return;
+    }
     const dungeon = s.dungeon;
     const mapH = dungeon.length, mapW = dungeon[0]?.length || 0;
     const TS = TILE_SIZE, t = Date.now() * 0.001;

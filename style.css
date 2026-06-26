@@ -301,6 +301,7 @@ button:active:not(:disabled) {
 body {
     height: 100vh;
     padding: 24px;
+    box-sizing: border-box;
     background:
         radial-gradient(circle at top left, rgba(255, 214, 90, 0.08), transparent 34%),
         linear-gradient(135deg, #151514 0%, #1d1c1a 45%, #10100f 100%);

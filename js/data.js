@@ -1755,6 +1755,17 @@ const CLASS_SPRITE_SRC = {
     cleric: 'sprites/cleric.png',
 };
 
+// Subclass-gender sprite overrides — used when files are present, falls back
+// to the generic CLASS_SPRITES entry above otherwise. Naming convention is
+// `sprites/<subclass>-<m|f>.png` (e.g. sprites/berserker-m.png).
+// New subclasses can be added here as their sprites are commissioned.
+const SUBCLASS_SPRITE_SRC = {
+    'berserker-m':  'sprites/berserker-m.png',
+    'berserker-f':  'sprites/berserker-f.png',
+    'assassin-m':   'sprites/assassin-m.png',
+    'assassin-f':   'sprites/assassin-f.png',
+};
+
 // Preloaded once at module init, fire-and-forget. Each entry starts as
 // just an Image() with .complete === false; drawPlayer() checks
 // .complete (and that it didn't error) every frame before drawing it,
@@ -1771,7 +1782,31 @@ for (const [cls, src] of Object.entries(CLASS_SPRITE_SRC)) {
     CLASS_SPRITES[cls] = img;
 }
 
+// Subclass-gender sprite preload — same fire-and-forget pattern. Missing files
+// silently fail-mark and getClassSprite() falls back to the generic class sprite.
+const SUBCLASS_SPRITES = {};
+for (const [key, src] of Object.entries(SUBCLASS_SPRITE_SRC)) {
+    const img = new Image();
+    img.src = src;
+    img._loadFailed = false;
+    img.onerror = () => { img._loadFailed = true; };
+    SUBCLASS_SPRITES[key] = img;
+}
+
 function getClassSprite(className) {
+    // Subclass-gender override: if the player has picked a subclass and a
+    // matching sprite is loaded, use it instead of the generic class sprite.
+    // Looks up gameState.player.subclassId + gameState.player.gender on the fly
+    // so any future subclass with a sprite just needs an entry in
+    // SUBCLASS_SPRITE_SRC — no other code changes required.
+    try {
+        const p = (typeof gameState !== 'undefined') ? gameState.player : null;
+        if (p && p.subclassId && p.gender) {
+            const key = `${p.subclassId}-${p.gender}`;
+            const sub = SUBCLASS_SPRITES[key];
+            if (sub && !sub._loadFailed && sub.complete && sub.naturalWidth > 0) return sub;
+        }
+    } catch (_) { /* fall through to generic */ }
     const img = CLASS_SPRITES[className];
     if (!img || img._loadFailed || !img.complete || img.naturalWidth === 0) return null;
     return img;
