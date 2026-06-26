@@ -1007,45 +1007,46 @@ function drawDecoration(x, y, type) {
 
 
 function drawDungeon() {
-    // Three.js WebGL handles tiles, walls, fog-of-war, and lighting when active.
-    // Canvas 2D only needs to draw interactables/traps/entities (called separately
-    // from draw() in render.js — nothing here needs to run in that case).
-    if (typeof threeJsActive === 'function' && threeJsActive()) return;
+    // When Three.js is active it handles the tile/wall geometry and fog-of-war.
+    // However the Canvas 2D lighting overlays (torch halos, player light,
+    // exit glows, fog particles) are radial-gradient composites drawn
+    // transparently on top — they still need to run every frame.
+    const threeActive = typeof threeJsActive === 'function' && threeJsActive();
 
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-        for (let x = 0; x < MAP_WIDTH; x++) {
-            if (!gameState.revealed[y][x]) {
-                drawUnrevealedFog(x, y);
-                continue;
+    if (!threeActive) {
+        // Canvas 2D tile geometry (only used when Three.js is off)
+        for (let y = 0; y < MAP_HEIGHT; y++) {
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                if (!gameState.revealed[y][x]) {
+                    drawUnrevealedFog(x, y);
+                    continue;
+                }
+                const tile = gameState.dungeon[y][x];
+                if (tile === 1) drawWallTile(x, y);
+                else drawFloorTexture(x, y, tile);
+                drawSpecialTileTint(x, y, tile);
+                if (gameState.floor > 0 && tile !== 1) {
+                    ctx.fillStyle = 'rgba(65, 55, 42, 0.10)';
+                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                }
             }
-            const tile = gameState.dungeon[y][x];
-            if (tile === 1) drawWallTile(x, y);
-            else drawFloorTexture(x, y, tile);
-            drawSpecialTileTint(x, y, tile);
-            // Ambient memory-lift: a very faint warm wash on every revealed
-            // non-wall tile so explored areas outside the player's light radius
-            // stay legible (the dungeon you've already seen shouldn't fall back
-            // to near-black). Floor base is now 46–76 brightness so this is a
-            // lighter touch than before — just enough to keep it readable.
-            if (gameState.floor > 0 && tile !== 1) {
-                ctx.fillStyle = 'rgba(65, 55, 42, 0.10)';
-                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+
+        drawWallEdgeShadows();
+
+        for (let y = 0; y < MAP_HEIGHT; y++) {
+            for (let x = 0; x < MAP_WIDTH; x++) {
+                if (!gameState.revealed[y][x]) continue;
+                const tile = gameState.dungeon[y][x];
+                if (gameState.floor > 0 && tile === 0 && gameState.decorGrid) {
+                    const decorType = gameState.decorGrid[y][x];
+                    if (decorType) drawDecoration(x, y, decorType);
+                }
             }
         }
     }
 
-    drawWallEdgeShadows();
-
-    for (let y = 0; y < MAP_HEIGHT; y++) {
-        for (let x = 0; x < MAP_WIDTH; x++) {
-            if (!gameState.revealed[y][x]) continue;
-            const tile = gameState.dungeon[y][x];
-            if (gameState.floor > 0 && tile === 0 && gameState.decorGrid) {
-                const decorType = gameState.decorGrid[y][x];
-                if (decorType) drawDecoration(x, y, decorType);
-            }
-        }
-    }
+    // ── Lighting overlays — always run (transparent composites on top of tiles) ──
 
     drawTorchLighting();
     drawPlayerLight();
