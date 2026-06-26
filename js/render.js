@@ -318,6 +318,13 @@ function draw() {
     // logical rect covers the whole canvas regardless of DPR.
     ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
 
+    // Three.js WebGL pass — renders dungeon tiles, walls, fog-of-war, and
+    // dynamic lighting (torch, enemy auras, exit beacons). Must run BEFORE
+    // the Canvas 2D entity drawing so the WebGL frame is composited beneath.
+    if (typeof updateThreeDungeon === 'function' && threeJsActive()) {
+        updateThreeDungeon();
+    }
+
     // Player movement lerp
     if (gameState.player) {
         const p = gameState.player;
@@ -425,6 +432,12 @@ function draw() {
         // ctx.save() on the stack, corrupting every frame rendered after it
         // (the camera shake translate would silently compound forever).
         ctx.restore();
+    }
+
+    // One-time Three.js init — deferred to first rendered frame so the
+    // canvas is guaranteed to be laid out and visible in the DOM.
+    if (typeof initThreeJS === 'function' && !threeJsActive()) {
+        initThreeJS();
     }
 
     // Multiplicative screenshake decay + angle rotation — deliberately

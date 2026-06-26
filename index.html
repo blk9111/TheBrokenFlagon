@@ -517,7 +517,10 @@
                 </div>
                 <div id="canvas-stage">
                     <div id="canvas-wrap">
-                        <canvas id="game-canvas" width="1000" height="720"></canvas>
+                        <!-- Three.js WebGL layer — tiles, walls, lighting (bottom) -->
+                        <canvas id="three-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;display:block;"></canvas>
+                        <!-- Canvas 2D overlay — entities, HUD, text (top, transparent bg) -->
+                        <canvas id="game-canvas" width="1000" height="720" style="position:relative;background:transparent;"></canvas>
                         <div id="event-cards"></div>
                         <div id="map-tooltip"></div>
                     </div>
@@ -1531,6 +1534,8 @@
     <script src="js/items.js"></script>
     <script src="js/tavern.js"></script>
     <script src="js/arena.js"></script>
+    <script src="js/three.min.js"></script>
+    <script src="js/render-three.js"></script>
     <script src="js/render.js"></script>
     <script src="js/render-tiles.js"></script>
     <script src="js/render-tavern.js"></script>

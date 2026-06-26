@@ -1007,6 +1007,11 @@ function drawDecoration(x, y, type) {
 
 
 function drawDungeon() {
+    // Three.js WebGL handles tiles, walls, fog-of-war, and lighting when active.
+    // Canvas 2D only needs to draw interactables/traps/entities (called separately
+    // from draw() in render.js — nothing here needs to run in that case).
+    if (typeof threeJsActive === 'function' && threeJsActive()) return;
+
     for (let y = 0; y < MAP_HEIGHT; y++) {
         for (let x = 0; x < MAP_WIDTH; x++) {
             if (!gameState.revealed[y][x]) {
