@@ -317,6 +317,13 @@
                 <div id="cs-left-panel">
                     <div id="cs-class-tabs"></div>
                     <div id="cs-subclass-pills"></div>
+
+                    <!-- Gender row lives here so portrait swaps immediately on pick -->
+                    <div id="cs-left-gender">
+                        <button class="csn-g-btn on" onclick="csSetGender('m',this)">&#9794; Male</button>
+                        <button class="csn-g-btn" onclick="csSetGender('f',this)">&#9792; Female</button>
+                    </div>
+
                     <div class="cs-art-wrap">
                         <img id="cs-hero-img" alt="" style="display:none" />
                         <svg id="cs-hero-svg" viewBox="0 0 280 380" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
