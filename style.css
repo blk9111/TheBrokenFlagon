@@ -4072,21 +4072,67 @@ body.in-run #game-container {
     aspect-ratio: 25 / 18;
     display: grid;
     overflow: hidden;
-    background: rgba(0, 0, 0, 0.82);
-    border: 2px solid #858074;
-    border-radius: 5px;
+    background:
+        radial-gradient(ellipse 70% 70% at 50% 50%, rgba(40,30,16,0.5) 0%, rgba(0,0,0,0.9) 100%);
+    border: 1px solid rgba(200, 160, 80, 0.45);
+    border-radius: 7px;
     gap: 1px;
-    padding: 1px;
+    padding: 2px;
+    box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        0 0 18px rgba(200, 140, 40, 0.12),
+        inset 0 1px 0 rgba(255, 220, 140, 0.08),
+        inset 0 0 24px rgba(0,0,0,0.5);
 }
 
 .minimap-cell {
     border-radius: 1px;
     min-height: 0;
-    transition: background 0.15s ease;
+    transition: background 0.18s ease;
+}
+
+/* Player cell — pulsing torch beacon so you always find yourself at a glance */
+.minimap-cell.minimap-player {
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.5), 0 0 6px 2px rgba(79,195,247,0.9);
+    animation: minimap-player-pulse 1.8s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+}
+@keyframes minimap-player-pulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.5), 0 0 5px 1px rgba(79,195,247,0.7); }
+    50%      { box-shadow: 0 0 0 1px rgba(255,255,255,0.8), 0 0 9px 3px rgba(79,195,247,1); }
 }
 
 .minimap-cell.minimap-boss {
-    box-shadow: inset 0 0 0 1px rgba(255, 159, 88, 0.8);
+    box-shadow: inset 0 0 0 1px rgba(255, 159, 88, 0.9);
+    animation: minimap-boss-pulse 1.4s ease-in-out infinite;
+}
+@keyframes minimap-boss-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 159, 88, 0.7); }
+    50%      { box-shadow: inset 0 0 0 1px rgba(255, 120, 50, 1), 0 0 5px rgba(255,100,40,0.6); }
+}
+
+/* Descend stairs — gentle glow so the way down is easy to spot */
+.minimap-cell.minimap-descend {
+    box-shadow: 0 0 5px rgba(156, 109, 255, 0.7);
+    animation: minimap-descend-pulse 2.2s ease-in-out infinite;
+}
+@keyframes minimap-descend-pulse {
+    0%, 100% { box-shadow: 0 0 3px rgba(156,109,255,0.5); }
+    50%      { box-shadow: 0 0 7px rgba(156,109,255,0.9); }
+}
+
+/* Item & event cells — faint sparkle ring */
+.minimap-cell.minimap-item   { box-shadow: 0 0 4px rgba(255, 214, 90, 0.6); }
+.minimap-cell.minimap-event  { box-shadow: 0 0 4px rgba(98, 185, 255, 0.6); }
+.minimap-cell.minimap-chest  { box-shadow: 0 0 3px rgba(200, 160, 96, 0.5); }
+.minimap-cell.minimap-npc    { box-shadow: 0 0 3px rgba(200, 160, 96, 0.4); }
+
+@media (prefers-reduced-motion: reduce) {
+    .minimap-cell.minimap-player,
+    .minimap-cell.minimap-boss,
+    .minimap-cell.minimap-descend { animation: none; }
 }
 
 #tavern-return-btn {

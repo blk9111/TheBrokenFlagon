@@ -1841,7 +1841,7 @@ function renderEquipment() {
 
 
 function getMinimapCellStyle(x, y) {
-    if (!gameState.revealed[y]?.[x]) return { bg: '#080808', title: 'Unexplored', cls: '' };
+    if (!gameState.revealed[y]?.[x]) return { bg: '#0a0806', title: 'Unexplored', cls: '' };
     const tile = gameState.dungeon[y][x];
     if (isPlayerAt(x, y)) return { bg: '#4fc3f7', title: 'You', cls: 'minimap-player' };
 
@@ -1868,7 +1868,7 @@ function getMinimapCellStyle(x, y) {
     if (tile === 2) return { bg: '#9c6dff', title: 'Descend Stairs', cls: 'minimap-descend' };
     if (tile === TILE_ASCEND) return { bg: '#ffd65a', title: 'Ascend Stairs', cls: 'minimap-ascend' };
     if (tile === TILE_TAVERN_EXIT) return { bg: '#ffd65a', title: 'Tavern Exit', cls: 'minimap-ascend' };
-    if (tile === 1) return { bg: '#555', title: 'Wall', cls: 'minimap-wall' };
+    if (tile === 1) return { bg: '#6a655c', title: 'Wall', cls: 'minimap-wall' };
 
     if (gameState.floor === 0) {
         const npcs = [
@@ -1881,7 +1881,7 @@ function getMinimapCellStyle(x, y) {
         if (npc) return { bg: '#c8a060', title: npc.name, cls: 'minimap-npc' };
     }
 
-    return { bg: '#1c1c1c', title: 'Floor', cls: 'minimap-floor' };
+    return { bg: '#2a2620', title: 'Floor', cls: 'minimap-floor' };
 }
 
 

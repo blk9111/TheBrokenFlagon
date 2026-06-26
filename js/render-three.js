@@ -124,8 +124,8 @@ function _buildTileMeshes() {
     // A slightly oversized dark plane sitting on the floor under each wall
     // block. This fakes ambient-occlusion contact shadow so the wall reads as
     // grounded masonry rather than a floating block. Drawn first (lowest z).
-    _wallAOMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS * 1.18, TS * 1.18),
-        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false }),
+    _wallAOMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS * 1.14, TS * 1.14),
+        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false }),
         _MAX_INST);
     _wallAOMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     _wallAOMesh.count = 0; _wallAOMesh.position.z = 1; _wallAOMesh.renderOrder = 1; _scene.add(_wallAOMesh);
@@ -177,14 +177,19 @@ function _resizeThree() {
 function _litColor(pal, wx, wy, px, py, flicker) {
     const dx = wx - px, dy = wy - py;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    // Quadratic torch falloff: full at 0, zero at ~500 world units
-    const tf = Math.max(0, 1 - dist / 480);
-    const torch = tf * tf * flicker * 2.6;
-    // ambient tint drives the depth-colour shift and danger pulse
-    const base = 0.38; // guaranteed minimum brightness so tiles never go black
-    const ar = base + _ambR * 0.55 + torch * 1.05;
-    const ag = base + _ambG * 0.40 + torch * 0.60;
-    const ab = base + _ambB * 0.28 + torch * 0.14;
+    // Quadratic torch falloff: full at 0, zero at ~620 world units (~15 tiles).
+    // Wider pool so the lit area around the player reads as a real room rather
+    // than a tiny halo.
+    const tf = Math.max(0, 1 - dist / 620);
+    const torch = tf * tf * flicker * 2.4;
+    // ambient tint drives the depth-colour shift and danger pulse.
+    // base is the GUARANTEED minimum brightness for any revealed tile — raised
+    // so explored floor/walls stay clearly visible across the whole map, not
+    // just inside the torch radius (classic roguelike "remembered" lighting).
+    const base = 0.54;
+    const ar = base + _ambR * 0.50 + torch * 0.95;
+    const ag = base + _ambG * 0.38 + torch * 0.56;
+    const ab = base + _ambB * 0.26 + torch * 0.14;
     return [
         Math.min(1, pal[0] * ar),
         Math.min(1, pal[1] * ag),
