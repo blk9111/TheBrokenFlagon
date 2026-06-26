@@ -167,6 +167,21 @@ function closeWhatsNew() {
 }
 
 
+// ── Manuals chooser ──────────────────────────────────────────────────────
+// Opens the documentation chooser (player manual, bot manual, audit, roadmap,
+// baseline). Each entry links to a standalone HTML page that opens in a new
+// tab, so the game state is never disturbed.
+function openManuals() {
+    const panel = document.getElementById('manuals-panel');
+    if (panel) panel.style.display = 'flex';
+}
+
+function closeManuals() {
+    const panel = document.getElementById('manuals-panel');
+    if (panel) panel.style.display = 'none';
+}
+
+
 function renderWhatsNew() {
     const body = document.getElementById('whats-new-body');
     if (!body) return;
@@ -188,6 +203,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         const panel = document.getElementById('whats-new-panel');
         if (panel && panel.style.display !== 'none') closeWhatsNew();
+        const manuals = document.getElementById('manuals-panel');
+        if (manuals && manuals.style.display !== 'none') closeManuals();
     }
 });
 
@@ -1238,10 +1255,11 @@ function _csUpdateHeroArt(id, color, rgb, skip){
         return;
     }
 
-    // Style the portrait frame
+    // Style the portrait frame — width:'88%' fills the art column.
+    // (Previously 'auto' kept the image at its native 209px and overrode the CSS.)
     Object.assign(img.style, {
-        maxWidth:'90%', maxHeight:'82%', width:'auto', height:'auto',
-        objectFit:'contain', borderRadius:'10px',
+        width:'88%', height:'auto', maxHeight:'82%',
+        objectFit:'contain', borderRadius:'14px',
         filter:`drop-shadow(0 0 38px rgba(${rgb},0.45))`,
         transition:'opacity 0.3s, transform 0.3s',
     });
