@@ -181,6 +181,25 @@ function closeManuals() {
     if (panel) panel.style.display = 'none';
 }
 
+/* Records & Links dropdown on the character-select right panel */
+function csTavernDdToggle() {
+    const menu   = document.getElementById('cs-records-menu');
+    const caret  = document.querySelector('.cs-dd-caret');
+    if (!menu) return;
+    const open = menu.classList.toggle('cs-records-open');
+    if (caret) caret.innerHTML = open ? '&#9650;' : '&#9660;';
+}
+/* Close the dropdown if user clicks outside of it */
+document.addEventListener('click', function(e) {
+    const dd = document.getElementById('cs-records-dd');
+    if (dd && !dd.contains(e.target)) {
+        const menu  = document.getElementById('cs-records-menu');
+        const caret = document.querySelector('.cs-dd-caret');
+        if (menu)  menu.classList.remove('cs-records-open');
+        if (caret) caret.innerHTML = '&#9660;';
+    }
+});
+
 
 function renderWhatsNew() {
     const body = document.getElementById('whats-new-body');

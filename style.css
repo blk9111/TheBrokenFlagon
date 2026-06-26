@@ -12892,6 +12892,7 @@ div[id$="-inner"]::before {
     position: relative;
     overflow: hidden;
     transition: border-color 0.5s;
+    padding: 8px 0 0;         /* top breathing room above class tabs */
 }
 #cs-left-panel::before {
     content: '';
@@ -12906,7 +12907,7 @@ div[id$="-inner"]::before {
 #cs-class-tabs {
     display: flex;
     gap: 2px;
-    padding: 14px 14px 0;
+    padding: 0 16px 0;        /* more horizontal padding — tabs breathe away from edges */
     width: 100%;
     z-index: 2;
 }
@@ -12974,7 +12975,7 @@ div[id$="-inner"]::before {
 #cs-subclass-pills {
     display: flex;
     gap: 6px;
-    padding: 6px 14px 10px;
+    padding: 6px 16px 10px;  /* match class-tab horizontal inset */
     z-index: 2;
     width: 100%;
     flex-wrap: wrap;
@@ -13148,11 +13149,85 @@ div[id$="-inner"]::before {
 .csn-g-btn:hover { border-color: rgba(var(--cs-acc-rgb),0.4); color: #e8ddd0; }
 .csn-g-btn.on { background: rgba(var(--cs-acc-rgb),0.15); border-color: rgba(var(--cs-acc-rgb),0.5); color: var(--cs-acc); }
 
-/* ── Left-panel gender row (moved from right panel config section) ── */
+/* ── Records & Links dropdown ────────────────────────────────────────── */
+.cs-records-dropdown {
+    position: relative;
+    width: 100%;
+}
+.cs-records-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+.cs-dd-caret {
+    font-size: 9px;
+    opacity: 0.6;
+    transition: transform 0.2s;
+}
+.cs-records-menu {
+    display: none;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    margin-top: 4px;
+    background: rgba(12, 8, 4, 0.97);
+    border: 1px solid rgba(var(--cs-acc-rgb), 0.25);
+    border-radius: 10px;
+    box-shadow:
+        0 8px 24px rgba(0,0,0,0.6),
+        0 0 0 1px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+    position: relative;
+    z-index: 10;
+    animation: cs-dd-drop 0.18s ease both;
+}
+.cs-records-menu.cs-records-open { display: flex; }
+@keyframes cs-dd-drop {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.cs-rec-item {
+    width: 100%;
+    padding: 8px 14px;
+    text-align: left;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 7px;
+    color: rgba(232,221,208,0.7);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.cs-rec-item:hover {
+    background: rgba(var(--cs-acc-rgb), 0.12);
+    border-color: rgba(var(--cs-acc-rgb), 0.35);
+    color: var(--cs-acc);
+}
+.cs-rec-gold {
+    color: rgba(255, 214, 90, 0.75);
+    border-color: rgba(255, 214, 90, 0.12);
+}
+.cs-rec-gold:hover {
+    background: rgba(255, 214, 90, 0.10);
+    border-color: rgba(255, 214, 90, 0.4);
+    color: var(--gold);
+}
+.cs-rec-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    margin: 3px 0;
+}
+
+/* ── Left panel — more breathing room ───────────────────────────────── */
 #cs-left-gender {
     display: flex;
     gap: 8px;
-    padding: 0 14px 10px;
+    padding: 0 16px 10px;    /* match class-tab horizontal inset */
     width: 100%;
 }
 #cs-left-gender .csn-g-btn {

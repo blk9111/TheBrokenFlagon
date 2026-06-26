@@ -410,13 +410,22 @@
                     </div>
 
                     <div class="cs-tavern-btns" style="margin-top:4px">
-                        <button class="rh-toggle-btn" onclick="if(typeof openProfile==='function')openProfile()">&#9876; Profile</button>
-                        <button class="rh-toggle-btn" onclick="toggleRunHistory()">&#9776; Past Runs</button>
-                        <button class="rh-toggle-btn rh-lb-btn" onclick="if(typeof openLeaderboard==='function')openLeaderboard()">&#127942; Leaderboard</button>
-                        <button class="rh-toggle-btn" onclick="toggleSaveSlots()">&#128190; Save Slots</button>
-                        <button class="rh-toggle-btn" onclick="if(typeof openTreasury==='function')openTreasury()">&#9672; Treasury</button>
-                        <button class="rh-toggle-btn" onclick="if(typeof openManuals==='function')openManuals()">&#128214; Manuals</button>
-                        <button class="rh-toggle-btn" onclick="if(typeof toggleManuals==='function')toggleManuals()">&#128214; Manuals</button>
+                        <!-- Collapsible dropdown — replaces the old stacked button row -->
+                        <div class="cs-records-dropdown" id="cs-records-dd">
+                            <button class="rh-toggle-btn cs-records-toggle" id="cs-records-toggle"
+                                    onclick="csTavernDdToggle()">
+                                &#9776;&nbsp; Records &amp; Links &nbsp;<span class="cs-dd-caret">&#9660;</span>
+                            </button>
+                            <div class="cs-records-menu" id="cs-records-menu">
+                                <button class="cs-rec-item" onclick="if(typeof openProfile==='function')openProfile()">&#9876; Profile</button>
+                                <button class="cs-rec-item" onclick="toggleRunHistory()">&#9776; Past Runs</button>
+                                <button class="cs-rec-item cs-rec-gold" onclick="if(typeof openLeaderboard==='function')openLeaderboard()">&#127942; Leaderboard</button>
+                                <button class="cs-rec-item" onclick="toggleSaveSlots()">&#128190; Save Slots</button>
+                                <button class="cs-rec-item" onclick="if(typeof openTreasury==='function')openTreasury()">&#9672; Treasury</button>
+                                <hr class="cs-rec-divider">
+                                <button class="cs-rec-item" onclick="window.open('manual-player.html','_blank')">&#128214; Player Manual</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="run-history-panel" style="display:none;"></div>
                     <div id="save-slots-panel" style="display:none;"></div>
