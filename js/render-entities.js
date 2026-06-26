@@ -973,11 +973,13 @@ function addBurst(x, y, color) {
 
 
 function drawEffects() {
-    // Prune expired effects in-place (backward splice avoids index shift bugs and
-    // doesn't allocate a new array every frame the way .filter() did — at 60fps
-    // that was one GC-able array created and thrown away per second).
-    for (let i = gameState.effects.length - 1; i >= 0; i--) {
-        if (gameState.effects[i].life <= 0) gameState.effects.splice(i, 1);
+    // Prune expired effects — swap-and-pop instead of splice:
+    // splice is O(n) per removal (shifts all subsequent elements);
+    // swap-and-pop is O(1) and avoids GC alloc from index shifting.
+    // Order within the effects array is irrelevant for rendering.
+    const efx = gameState.effects;
+    for (let i = efx.length - 1; i >= 0; i--) {
+        if (efx[i].life <= 0) { efx[i] = efx[efx.length - 1]; efx.pop(); }
     }
     gameState.effects.forEach(effect => {
         const progress = 1 - effect.life / effect.maxLife;

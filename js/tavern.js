@@ -1451,7 +1451,11 @@ function playDice(betType) {
 
     const wagerEl = document.getElementById('wager-input');
     const resultEl = document.getElementById('gambling-result');
-    const wager = Math.round(Number(wagerEl ? wagerEl.value : 10));
+    // Use parseFloat + isNaN to reject non-numeric text. Number("abc") = NaN
+    // which silently passes all wager guards (NaN < 5 = false, etc.) and then
+    // corrupts p.gold to NaN. parseInt also rejects "abc" but misses "1.5".
+    const rawDice = parseFloat(wagerEl?.value ?? '10');
+    const wager = Math.round(isNaN(rawDice) ? 10 : rawDice);
 
     const showErr = msg => {
         if (resultEl) { resultEl.textContent = msg; resultEl.className = 'gambling-result result-lose'; }
@@ -1661,7 +1665,8 @@ function playWheel() {
     if (!gameState.player || !gameState.gamblingOpen) return;
     const wagerEl = document.getElementById('wheel-wager-input');
     const resultEl = document.getElementById('wheel-result');
-    const wager = Math.round(Number(wagerEl ? wagerEl.value : 10));
+    const rawWheel = parseFloat(wagerEl?.value ?? '10');
+    const wager = Math.round(isNaN(rawWheel) ? 10 : rawWheel);
     const spinBtn = document.getElementById('wheel-spin-btn');
 
     const showErr = msg => {
@@ -1711,7 +1716,15 @@ function generateBounties() {
     const lvl = gameState.player ? gameState.player.level : 1;
     const hardBounties = isRenownUnlocked('harderBounties');
     // Shuffle the pool and take 3 unique templates
-    const shuffled = [...QUEST_POOL].sort(() => rng() - 0.5).slice(0, 3);
+    // Fisher-Yates shuffle — sort(() => rng() - 0.5) produces a biased
+    // distribution (TimSort is not designed for random comparators), causing
+    // certain quests to appear disproportionately often.
+    const pool = [...QUEST_POOL];
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const shuffled = pool.slice(0, 3);
     return shuffled.map(tpl => {
         const amount = tpl.getAmount(lvl);
         let reward = tpl.getReward(amount);
