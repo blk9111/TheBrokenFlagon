@@ -12993,6 +12993,157 @@ div[id$="-inner"]::before {
     box-shadow: 0 0 12px rgba(var(--cs-acc-rgb),0.25);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHARACTER SELECT — ENHANCED VISUALS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Animated diagonal light rays drifting behind the portrait */
+#cs-left-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: repeating-linear-gradient(
+        -52deg,
+        transparent 0, transparent 36px,
+        rgba(var(--cs-acc-rgb), 0.016) 36px,
+        rgba(var(--cs-acc-rgb), 0.016) 38px
+    );
+    animation: cs-rays-drift 14s linear infinite;
+    transition: background 0.6s;
+}
+@keyframes cs-rays-drift {
+    from { background-position: 0 0; }
+    to   { background-position: 54px 54px; }
+}
+
+/* Portrait — slow breathing glow (replaces static box-shadow) */
+#cs-hero-img {
+    animation: cs-port-breathe 3.8s ease-in-out infinite;
+}
+@keyframes cs-port-breathe {
+    0%, 100% {
+        box-shadow:
+            0 0 0 1px rgba(var(--cs-acc-rgb), 0.25),
+            0 24px 70px rgba(0,0,0,0.65),
+            0 0 55px  rgba(var(--cs-acc-rgb), 0.18);
+    }
+    50% {
+        box-shadow:
+            0 0 0 2px rgba(var(--cs-acc-rgb), 0.55),
+            0 24px 70px rgba(0,0,0,0.65),
+            0 0 110px rgba(var(--cs-acc-rgb), 0.38),
+            0 0 220px rgba(var(--cs-acc-rgb), 0.10);
+    }
+}
+
+/* L-shaped corner frame ornaments around the art area */
+.cs-art-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 24px;
+    pointer-events: none;
+    z-index: 2;
+    background:
+        linear-gradient( 90deg, var(--cs-acc), transparent) top    left  / 48px 1.5px no-repeat,
+        linear-gradient(180deg, var(--cs-acc), transparent) top    left  / 1.5px 48px no-repeat,
+        linear-gradient(-90deg, var(--cs-acc), transparent) top    right / 48px 1.5px no-repeat,
+        linear-gradient(180deg, var(--cs-acc), transparent) top    right / 1.5px 48px no-repeat,
+        linear-gradient( 90deg, var(--cs-acc), transparent) bottom left  / 48px 1.5px no-repeat,
+        linear-gradient(-180deg,var(--cs-acc), transparent) bottom left  / 1.5px 48px no-repeat,
+        linear-gradient(-90deg, var(--cs-acc), transparent) bottom right / 48px 1.5px no-repeat,
+        linear-gradient(-180deg,var(--cs-acc), transparent) bottom right / 1.5px 48px no-repeat;
+    opacity: 0.55;
+    animation: cs-corner-pulse 4.2s ease-in-out infinite;
+    transition: background 0.5s;
+}
+@keyframes cs-corner-pulse {
+    0%, 100% { opacity: 0.40; }
+    50%       { opacity: 0.90; }
+}
+
+/* Class name — larger and animated glow */
+.csn-cls-name {
+    font-size: 46px;
+    animation: cs-name-glow 4s ease-in-out infinite;
+}
+@keyframes cs-name-glow {
+    0%, 100% { text-shadow: 0 0 28px rgba(var(--cs-acc-rgb), 0.40); }
+    50%       { text-shadow: 0 0 70px rgba(var(--cs-acc-rgb), 0.85), 0 0 22px rgba(var(--cs-acc-rgb), 0.50); }
+}
+
+/* Stat cards — thicker bar, hover lift, glow */
+.csn-bar-wrap { height: 4px; }
+.csn-sc-val   { font-size: 30px; }
+.csn-sc {
+    transition: transform 0.2s, border-color 0.3s, box-shadow 0.3s;
+    cursor: default;
+}
+.csn-sc:hover {
+    transform: translateY(-3px);
+    border-color: rgba(var(--cs-acc-rgb), 0.32);
+    box-shadow: 0 6px 24px rgba(var(--cs-acc-rgb), 0.14), inset 0 0 0 1px rgba(var(--cs-acc-rgb), 0.06);
+}
+.csn-sc::after {
+    height: 3px;
+    opacity: 0.65;
+}
+
+/* Class tabs — taller, bolder active underline */
+.csn-cls-tab { padding: 10px 4px; font-size: 11px; }
+.csn-cls-tab.on {
+    box-shadow: inset 0 -2px 0 var(--cs-acc), 0 0 14px rgba(var(--cs-acc-rgb), 0.10);
+}
+
+/* Subclass pills — glow ring on active */
+.csn-sc-pill.on {
+    box-shadow: 0 0 0 1px var(--cs-acc), 0 0 18px rgba(var(--cs-acc-rgb), 0.22);
+    letter-spacing: 0.12em;
+}
+
+/* Ability glyph — slightly larger */
+.csn-abl-glyph { width: 50px; height: 50px; }
+
+/* Trait rows — subtle hover highlight */
+.csn-trait-row {
+    transition: background 0.18s, border-color 0.18s;
+}
+.csn-trait-row:hover {
+    background: rgba(var(--cs-acc-rgb), 0.05);
+    border-color: rgba(var(--cs-acc-rgb), 0.20);
+}
+
+/* Right panel animated accent edge */
+#cs-right-panel { position: relative; }
+#cs-right-panel::after {
+    content: '';
+    position: absolute;
+    top: 15%; left: 0; bottom: 15%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, var(--cs-acc) 40%, var(--cs-acc) 60%, transparent);
+    opacity: 0.22;
+    animation: cs-edge-breathe 4s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes cs-edge-breathe {
+    0%, 100% { opacity: 0.12; }
+    50%       { opacity: 0.40; }
+}
+
+/* Begin button — more dramatic */
+#cs-begin-btn, .cs-begin-btn {
+    letter-spacing: 0.16em;
+    transition: box-shadow 0.3s, background 0.3s, transform 0.15s;
+}
+#cs-begin-btn:hover:not(:disabled), .cs-begin-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 30px rgba(var(--cs-acc-rgb), 0.35);
+}
+#cs-begin-btn:active:not(:disabled), .cs-begin-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
 .csn-inp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .csn-inp-grp { display: flex; flex-direction: column; gap: 4px; }
 .csn-inp-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(232,221,208,0.45); }
