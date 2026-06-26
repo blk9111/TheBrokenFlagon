@@ -29,12 +29,12 @@ let _mistPos    = null; // Float32Array of xyz for each particle
 let _mistVel    = null; // Float32Array of vx, vy per particle
 const _MIST_COUNT = 220;
 
-// Base tile colours — dark stone; ambient + torch bring these to life
+// Base tile colours — bright enough to be visible under the minimum ambient
 const PAL = {
-    FLOOR:      [0.28, 0.20, 0.12],  // warm stone
-    FLOOR_EXIT: [0.14, 0.28, 0.16],  // mossy green stairs-down
-    FLOOR_UP:   [0.18, 0.12, 0.28],  // cool purple stairs-up
-    WALL:       [0.22, 0.15, 0.08],  // darker warm stone
+    FLOOR:      [0.72, 0.52, 0.30],  // warm stone
+    FLOOR_EXIT: [0.28, 0.58, 0.32],  // mossy green stairs-down
+    FLOOR_UP:   [0.36, 0.26, 0.58],  // cool purple stairs-up
+    WALL:       [0.55, 0.38, 0.20],  // darker warm stone
 };
 
 // Rarity → light colour map
@@ -69,16 +69,18 @@ function initThreeJS() {
     _camera.lookAt(0, 0, 0);
 
     // Lights
-    // Ambient — raised so tiles stay visible even beyond the torch radius
-    _ambientLight = new THREE.AmbientLight(0x3a2a18, 1.2);
+    // Ambient — bright enough that tiles are visible without the torch nearby.
+    // _updateAmbient() overrides this every frame; keep this value as the
+    // fallback for the very first frame before the update loop runs.
+    _ambientLight = new THREE.AmbientLight(0xffeedd, 0.80);
     _scene.add(_ambientLight);
 
-    // Primary torch — extended range covers the full dungeon
+    // Primary torch — extended range, realistic warm decay
     _torchLight = new THREE.PointLight(0xff9820, 4.5, 700, 1.4);
     _torchLight.position.z = 44;
     _scene.add(_torchLight);
 
-    // Offset secondary for richer flame look
+    // Secondary offset for richer flame look
     _torchLight2 = new THREE.PointLight(0xffb840, 1.8, 350, 1.8);
     _torchLight2.position.z = 22;
     _scene.add(_torchLight2);
@@ -384,6 +386,11 @@ function _updateItemLights(t) {
 }
 
 // ── Ambient depth shift + danger pulse ───────────────────────────────────────
+// Values here are the EFFECTIVE ambient (color × intensity) after multiplication.
+// Tiles need effective ≥ ~0.35 on at least one channel to be visible.
+// With PAL.FLOOR = (0.72, 0.52, 0.30), effective (0.55, 0.42, 0.28) × 0.85
+// gives tile brightness (0.72×0.468, 0.52×0.357, 0.30×0.238) = (0.34, 0.19, 0.07)
+// — clearly visible warm dark stone. Torch adds bright amber highlights on top.
 function _updateAmbient(t) {
     if (!_ambientLight) return;
     const s = gameState;
@@ -392,30 +399,30 @@ function _updateAmbient(t) {
     const hpFrac = p ? p.hp / Math.max(1, p.maxHp) : 1;
     const bossNear = (s?.enemies||[]).some(e => e.hp>0 && (e.type==='boss'||e.bossVariant) && s.revealed?.[e.y]?.[e.x]);
 
-    // Depth-based ambient: warm shallow → cool grey mid → cold purple deep
+    // Depth palette — keep r, g, b high enough so PAL × ambient ≥ ~0.30
     let r, g, b, intensity;
-    if (floor === 0)      { r=0.12; g=0.09; b=0.06; intensity=0.6; }  // tavern: warm
-    else if (floor < 15)  { r=0.10; g=0.07; b=0.04; intensity=0.5; }  // shallow: brown
-    else if (floor < 35)  { r=0.06; g=0.07; b=0.09; intensity=0.45; } // mid: blue-grey
-    else if (floor < 65)  { r=0.05; g=0.04; b=0.09; intensity=0.4; }  // deep: purple
-    else                  { r=0.08; g=0.03; b=0.10; intensity=0.38; } // abyss: violet
+    if (floor === 0)      { r=0.55; g=0.42; b=0.28; intensity=0.85; } // tavern: warm cream
+    else if (floor < 15)  { r=0.48; g=0.36; b=0.22; intensity=0.80; } // shallow: warm stone
+    else if (floor < 35)  { r=0.32; g=0.34; b=0.44; intensity=0.75; } // mid: blue-grey
+    else if (floor < 65)  { r=0.28; g=0.22; b=0.44; intensity=0.70; } // deep: purple
+    else                  { r=0.32; g=0.14; b=0.44; intensity=0.65; } // abyss: violet
 
-    // Boss override: pulse toward deep red
+    // Boss nearby: pulse ambient toward deep red
     if (bossNear) {
         const pulse = 0.5 + Math.sin(t * 2.4) * 0.5;
-        r = r + (0.20 - r) * pulse * 0.7;
-        g = g * (1 - pulse * 0.5);
-        b = b * (1 - pulse * 0.4);
-        intensity += pulse * 0.3;
+        r = r + (0.55 - r) * pulse * 0.6;
+        g = g * (1 - pulse * 0.45);
+        b = b * (1 - pulse * 0.35);
+        intensity += pulse * 0.15;
     }
 
-    // Low-HP danger: red tint that intensifies as HP drops
+    // Low-HP danger: red tint that deepens as HP → 0
     if (hpFrac < 0.30 && floor > 0) {
-        const danger = (0.30 - hpFrac) / 0.30; // 0→1 as hp → 0
-        const pulse = 0.5 + Math.sin(t * 4.5) * 0.5;
-        r = r + (0.25 * danger * pulse);
-        g *= 1 - danger * 0.4;
-        b *= 1 - danger * 0.4;
+        const danger = (0.30 - hpFrac) / 0.30;
+        const pulse  = 0.5 + Math.sin(t * 4.5) * 0.5;
+        r += 0.30 * danger * pulse;
+        g *= 1 - danger * 0.35;
+        b *= 1 - danger * 0.35;
     }
 
     _ambientLight.color.setRGB(r, g, b);
