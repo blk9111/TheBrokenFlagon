@@ -1273,7 +1273,14 @@ function _csUpdateHeroArt(id, color, rgb, skip){
         else { img.style.opacity='1'; img.style.transform='scale(1)'; }
     };
     img.onerror = () => {
-        // Portrait missing → show the animated SVG instead.
+        // Subclass-specific portrait missing → try the generic class portrait.
+        // Generic missing → fall back to the animated SVG silhouette.
+        // Tracked on the element so we only do this fallback once per attempt.
+        if (img._triedGeneric !== ccState.subclassId) {
+            img._triedGeneric = ccState.subclassId;
+            img.src = `${id}-${gender}.png?v=${typeof GAME_VERSION!=='undefined'?GAME_VERSION:'1'}`;
+            return;
+        }
         img.style.display = 'none';
         if (svg) {
             svg.style.display = 'block';
@@ -1282,7 +1289,15 @@ function _csUpdateHeroArt(id, color, rgb, skip){
             else { svg.style.opacity='1'; svg.style.transform='scale(1)'; }
         }
     };
-    img.src = `${id}-${gender}.png?v=${typeof GAME_VERSION!=='undefined'?GAME_VERSION:'1'}`;
+    // Prefer subclass-specific portrait (e.g. berserker-m-portrait.png) when a
+    // subclass is selected; the onerror handler above falls back to the generic
+    // class portrait, then to the SVG silhouette if both are missing.
+    img._triedGeneric = null;
+    const sub = ccState && ccState.subclassId;
+    const src = sub
+        ? `${sub}-${gender}-portrait.png?v=${typeof GAME_VERSION!=='undefined'?GAME_VERSION:'1'}`
+        : `${id}-${gender}.png?v=${typeof GAME_VERSION!=='undefined'?GAME_VERSION:'1'}`;
+    img.src = src;
 }
 
 
@@ -1403,13 +1418,25 @@ function selectSubclass(className,subclassId){
     _csRenderStats(sc,className);_csRenderTraits(sc,className);_csRenderGear(className);_csRenderPower(className);_csUpdateAbility(sc,className);
     const hint=document.getElementById('cs-pick-hint'),inp=document.getElementById('cs-config-inputs');
     if(hint)hint.style.display='none';if(inp)inp.style.display='block';
-    const img=document.getElementById('cs-portrait-img');if(img){img.src=`${className}-${ccState.gender}.png`;img.style.display='';}
+    // Refresh the large left-panel portrait now that a subclass is picked —
+    // tries the subclass-specific image first (e.g. berserker-m-portrait.png),
+    // falls back to the generic class portrait, then to the SVG silhouette.
+    const color=CLASS_COLOR[className]||'#c8922a';
+    const rgb=parseInt(color.slice(1,3),16)+','+parseInt(color.slice(3,5),16)+','+parseInt(color.slice(5,7),16);
+    _csUpdateHeroArt(className,color,rgb,true);
     const ni=document.getElementById('char-name-input');if(ni)ni.placeholder=(CLASS_META[className]||{name:sc.name}).name;
 }
 
 function selectGender(gender){
     ccState.gender=gender;
-    const img=document.getElementById('cs-portrait-img');if(img){img.src=`${ccState.className}-${gender}.png`;img.style.display='';}
+    // Refresh the large left-panel portrait — picks up the new gender's subclass
+    // portrait (or generic class portrait fallback) automatically.
+    const className = ccState.className;
+    if (className) {
+        const color=CLASS_COLOR[className]||'#c8922a';
+        const rgb=parseInt(color.slice(1,3),16)+','+parseInt(color.slice(3,5),16)+','+parseInt(color.slice(5,7),16);
+        _csUpdateHeroArt(className,color,rgb,true);
+    }
 }
 
 function renderClassExpanded(){/* no-op — new design handles via selectSubclass() */}
