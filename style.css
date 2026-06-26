@@ -9160,30 +9160,40 @@ body.in-run #game-container {
     position: fixed;
     inset: 0;
     z-index: 300;
-    background: rgba(0, 0, 0, 0.82);
+    background: rgba(0, 0, 0, 0.88);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
+    backdrop-filter: blur(3px);
 }
 
 #storybook-parchment {
     position: relative;
-    width: min(680px, 96vw);
-    max-height: 88vh;
+    width: min(740px, 96vw);
+    max-height: 90vh;
     background:
-        radial-gradient(ellipse 120% 80% at 50% 0%, rgba(200,140,50,0.10) 0%, transparent 55%),
-        linear-gradient(160deg, #1e160c 0%, #150f08 60%, #1a1208 100%);
-    border: 2px solid rgba(200, 160, 80, 0.45);
-    border-radius: 12px;
+        /* top torchlight glow */
+        radial-gradient(ellipse 90% 35% at 50% 0%, rgba(220,155,50,0.18) 0%, transparent 60%),
+        /* bottom corner warmth */
+        radial-gradient(ellipse 55% 30% at 10% 100%, rgba(180,100,20,0.14) 0%, transparent 60%),
+        radial-gradient(ellipse 55% 30% at 90% 100%, rgba(180,100,20,0.10) 0%, transparent 60%),
+        /* base parchment */
+        linear-gradient(170deg, #201508 0%, #150e06 45%, #1b1208 80%, #120d05 100%);
+    border: 1px solid rgba(200, 160, 80, 0.35);
+    border-radius: 14px;
     box-shadow:
-        0 0 60px rgba(200, 140, 40, 0.15),
-        0 24px 80px rgba(0, 0, 0, 0.75),
-        inset 0 1px 0 rgba(255, 220, 150, 0.08);
+        0 0 0 1px rgba(120, 80, 20, 0.4),
+        0 0 80px rgba(200, 130, 30, 0.22),
+        0 0 160px rgba(200, 130, 30, 0.10),
+        0 32px 100px rgba(0, 0, 0, 0.85),
+        inset 0 1px 0 rgba(255, 220, 130, 0.10),
+        inset 0 -1px 0 rgba(0,0,0,0.6);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transform-origin: top center;
+    animation: sb-unfurl 0.55s cubic-bezier(0.22,1,0.36,1) both;
 }
 /* Faint aged-paper grain — a barely-there texture so the page reads as old
    vellum under torchlight rather than a flat fill. Pointer-events none so it
@@ -9211,11 +9221,11 @@ body.in-run #game-container {
     position: absolute;
     top: 14px;
     right: 16px;
-    z-index: 2;
-    width: 32px;
-    height: 32px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(200, 160, 80, 0.3);
+    z-index: 20;          /* must exceed #storybook-scroll (z-index:2) */
+    width: 36px;
+    height: 36px;
+    background: rgba(20, 14, 6, 0.85);
+    border: 1px solid rgba(200, 160, 80, 0.45);
     border-radius: 50%;
     color: #c8a060;
     font-size: 18px;
@@ -9224,42 +9234,79 @@ body.in-run #game-container {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    pointer-events: all;  /* guarantee it captures clicks */
 }
-#storybook-close:hover { background: rgba(200, 160, 80, 0.18); color: var(--gold); }
+#storybook-close:hover {
+    background: rgba(200, 160, 80, 0.22);
+    border-color: rgba(200, 160, 80, 0.75);
+    color: #ffd65a;
+    box-shadow: 0 0 16px rgba(200, 160, 80, 0.35);
+}
 
 #storybook-scroll {
     overflow-y: auto;
     position: relative;
     z-index: 2;
-    padding: 36px 44px 40px;
+    padding: 36px 48px 44px;
     flex: 1;
     scroll-behavior: smooth;
 }
-#storybook-scroll::-webkit-scrollbar { width: 6px; }
-#storybook-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-#storybook-scroll::-webkit-scrollbar-thumb { background: rgba(200,160,80,0.35); border-radius: 3px; }
+#storybook-scroll::-webkit-scrollbar { width: 5px; }
+#storybook-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+#storybook-scroll::-webkit-scrollbar-thumb {
+    background: rgba(200,160,80,0.3);
+    border-radius: 3px;
+}
+#storybook-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(200,160,80,0.55);
+}
 
 /* Title block */
 .storybook-title-block {
     text-align: center;
-    margin-bottom: 32px;
-    padding-bottom: 28px;
-    border-bottom: 1px solid rgba(200,160,80,0.2);
+    padding: 32px 44px 26px;
+    margin-bottom: 0;
+    position: relative;
+    background: linear-gradient(180deg, rgba(220,155,50,0.09) 0%, transparent 100%);
+    border-bottom: 1px solid transparent;
 }
+/* Double-rule engraved separator under the title */
+.storybook-title-block::before {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 6%; right: 6%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200,160,60,0.55) 30%, rgba(255,214,90,0.75) 50%, rgba(200,160,60,0.55) 70%, transparent);
+}
+.storybook-title-block::after {
+    content: '';
+    position: absolute;
+    bottom: -4px; left: 12%; right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(200,160,60,0.25) 40%, rgba(200,160,60,0.25) 60%, transparent);
+}
+
 .storybook-title {
     font-family: var(--font-display);
-    font-size: clamp(22px, 4vw, 32px);
-    color: var(--gold);
-    letter-spacing: 0.04em;
-    line-height: 1.25;
-    margin: 10px 0;
-    text-shadow: 0 0 30px rgba(255, 214, 90, 0.22);
+    font-size: clamp(24px, 4vw, 34px);
+    color: #f8d870;
+    letter-spacing: 0.05em;
+    line-height: 1.22;
+    margin: 10px 0 6px;
+    text-shadow:
+        0 0 40px rgba(240,185,60,0.55),
+        0 0 80px rgba(220,140,30,0.25),
+        0 3px 6px rgba(0,0,0,0.85);
 }
 .sb-ornament {
-    font-size: 16px;
-    color: rgba(200,160,80,0.6);
-    letter-spacing: 0.3em;
+    font-size: 14px;
+    color: rgba(200,160,80,0.65);
+    letter-spacing: 0.4em;
+    display: block;
+    margin: 5px 0;
+    text-shadow: 0 0 8px rgba(200,160,80,0.3);
 }
 
 /* Chapters */
@@ -9288,61 +9335,76 @@ body.in-run #game-container {
     width: 100%;
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 18px;
-    border: 1px solid rgba(200,160,80,0.18);
-    background: #0c0806;
+    margin-bottom: 22px;
+    border: 1px solid rgba(200,160,80,0.25);
+    box-shadow:
+        0 0 0 1px rgba(0,0,0,0.6),
+        0 0 30px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(200,160,80,0.12);
+    background: #080604;
     min-height: 80px;
+    position: relative;
+}
+/* Torch-glow sheen across the top of each illustration */
+.sb-chapter-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(200,140,40,0.06) 0%, transparent 40%);
+    pointer-events: none;
 }
 
 .sb-heading {
     font-family: var(--font-display);
-    font-size: 25px;
-    color: #e0b878;
-    margin-bottom: 18px;
+    font-size: 26px;
+    color: #e8c068;
+    margin-bottom: 20px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    letter-spacing: 0.02em;
-    text-shadow: 0 0 26px rgba(200,160,80,0.3);
+    gap: 6px;
+    letter-spacing: 0.03em;
+    text-shadow:
+        0 0 28px rgba(220,175,80,0.45),
+        0 2px 4px rgba(0,0,0,0.7);
 }
 .sb-chapter-num {
-    font-size: 10.5px;
-    letter-spacing: 0.32em;
+    font-size: 10px;
+    letter-spacing: 0.36em;
     text-transform: uppercase;
-    color: rgba(212, 169, 106, 0.6);
+    color: rgba(212,169,106,0.65);
     font-weight: 400;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
-/* A short engraved rule trailing the chapter number — a small structural mark
-   that reads as "carved heading" rather than plain label. */
 .sb-chapter-num::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, rgba(200,160,80,0.4), transparent);
+    background: linear-gradient(90deg, rgba(200,160,80,0.45), transparent);
 }
 
 #storybook-scroll p {
-    color: #cdbd9c;
+    color: #d0c09e;
     font-family: 'Georgia', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 16.5px;
-    line-height: 1.85;
-    margin-bottom: 15px;
-    letter-spacing: 0.005em;
+    font-size: 16px;
+    line-height: 1.9;
+    margin-bottom: 16px;
+    letter-spacing: 0.008em;
 }
-/* Drop cap — the illuminated initial that makes each chapter open like a tome.
-   Applies to the first paragraph of every chapter. */
+/* Illuminated drop-cap — the glowing initial that opens each chapter */
 .sb-chapter > p:first-of-type::first-letter {
     float: left;
     font-family: var(--font-display, 'Cinzel', serif);
-    font-size: 58px;
-    line-height: 0.82;
-    padding: 4px 12px 0 0;
-    margin-top: 4px;
-    color: var(--gold, #c8922a);
-    text-shadow: 0 0 22px rgba(200,160,80,0.45);
+    font-size: 64px;
+    line-height: 0.78;
+    padding: 6px 14px 0 0;
+    margin-top: 5px;
+    color: #f8d060;
+    text-shadow:
+        0 0 18px rgba(240,180,50,0.7),
+        0 0 40px rgba(200,140,30,0.35),
+        0 3px 6px rgba(0,0,0,0.9);
     font-weight: 700;
 }
 .sb-italic { font-style: italic; color: #b0a080 !important; }
