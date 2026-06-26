@@ -300,7 +300,7 @@ button:active:not(:disabled) {
 
 body {
     height: 100vh;
-    padding: 24px 24px 0;   /* bottom: 0 — prevents the 24px overflow that clips #controls-panel */
+    padding: 14px 14px 0;   /* tighter padding = more screen for the title */
     background:
         radial-gradient(circle at top left, rgba(255, 214, 90, 0.08), transparent 34%),
         linear-gradient(135deg, #151514 0%, #1d1c1a 45%, #10100f 100%);
@@ -362,7 +362,7 @@ body.in-run #game-container {
    ════════════════════════════════════════════════════════════════════ */
 
 #title-screen {
-    width: min(100%, 1240px);
+    width: min(100%, 1340px);
     margin: 0 auto;
     position: relative;
     overflow: hidden;
@@ -373,8 +373,8 @@ body.in-run #game-container {
         0 0 80px rgba(200, 140, 20, 0.08),
         inset 0 1px 0 rgba(255, 214, 90, 0.16);
     border-radius: 14px;
-    height: 80vh;
-    max-height: 920px;
+    height: 90vh;
+    max-height: 1020px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -400,17 +400,19 @@ body.in-run #game-container {
     z-index: 1;
     background:
         /* Warm glow from the tavern fireplace — bottom-left */
-        radial-gradient(ellipse 45% 40% at 8% 98%, rgba(180, 90, 20, 0.28) 0%, transparent 70%),
+        radial-gradient(ellipse 40% 35% at 6% 100%, rgba(160, 80, 10, 0.22) 0%, transparent 65%),
         /* Dungeon darkness bleeds in from the right */
-        radial-gradient(ellipse 40% 60% at 100% 50%, rgba(0,0,0,0.55) 0%, transparent 65%),
-        /* Top vignette */
+        radial-gradient(ellipse 35% 55% at 100% 50%, rgba(0,0,0,0.40) 0%, transparent 60%),
+        /* Gradient: nearly clear across the painted title, darkens only at the very
+           top and bottom so the background artwork text shows through cleanly. */
         linear-gradient(180deg,
-            rgba(0,0,0,0.60)  0%,
-            rgba(0,0,0,0.10) 28%,
-            rgba(0,0,0,0.00) 42%,
-            rgba(0,0,0,0.55) 64%,
-            rgba(0,0,0,0.92) 78%,
-            rgba(0,0,0,0.98) 100%);
+            rgba(0,0,0,0.42)  0%,
+            rgba(0,0,0,0.05) 22%,
+            rgba(0,0,0,0.00) 38%,
+            rgba(0,0,0,0.00) 52%,
+            rgba(0,0,0,0.55) 66%,
+            rgba(0,0,0,0.90) 78%,
+            rgba(0,0,0,0.97) 100%);
 }
 
 /* Embers / dust motes floating up — pure CSS, no JS */
@@ -572,10 +574,10 @@ body.in-run #game-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
-    padding: 0 24px 54px;
+    gap: 12px;
+    padding: 0 24px 44px;
     width: 100%;
-    max-width: 640px;
+    max-width: 660px;
 }
 
 /* ── Character sheet class portrait ────────────────────────────────── */
@@ -9723,21 +9725,7 @@ body.in-run #game-container {
 
 
 /* ── Title screen production credit ─────────────────────────────────── */
-#title-production {
-    position: absolute;
-    top: 18px;
-    left: 0;
-    right: 0;
-    z-index: 3;
-    text-align: center;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
-    color: rgba(200, 160, 70, 0.55);
-    pointer-events: none;
-    font-family: 'Courier New', monospace;
-}
+#title-production { display: none; } /* Removed — bg image carries the studio credit */
 
 
 /* ── Casino new games ──────────────────────────────────────────────── */
