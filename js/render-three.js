@@ -12,7 +12,7 @@ let _THREE_ACTIVE = false;
 let _renderer = null, _scene = null, _camera = null;
 const _MAX_INST = 2400;
 let _floorMesh = null, _wallMesh = null, _darkMesh = null;
-let _ambientLight = null, _torchLight = null, _torchLight2 = null;
+let _ambientLight = null, _dirLight = null, _torchLight = null, _torchLight2 = null;
 const _enemyLights = [], _exitLights = [];
 let _dummy = null, _col = null;
 
@@ -69,11 +69,18 @@ function initThreeJS() {
     _camera.lookAt(0, 0, 0);
 
     // Lights
-    // Ambient — bright enough that tiles are visible without the torch nearby.
-    // _updateAmbient() overrides this every frame; keep this value as the
-    // fallback for the very first frame before the update loop runs.
-    _ambientLight = new THREE.AmbientLight(0xffeedd, 0.80);
+    // Dim ambient fill — just enough to keep very far tiles non-black.
+    _ambientLight = new THREE.AmbientLight(0xffeedd, 0.25);
     _scene.add(_ambientLight);
+
+    // Key light: DirectionalLight pointing straight down (+z → -z direction).
+    // Floor PlaneGeometry has normal (0,0,1) so dot(normal, lightDir) = 1.0 —
+    // guaranteed full illumination on all floor tiles regardless of position.
+    // Wall BoxGeometry top-faces also face +z (lit); side-faces face ±x/y
+    // and get zero direct contribution (only ambient fill), creating natural depth.
+    _dirLight = new THREE.DirectionalLight(0xffd8b0, 0.75);
+    _dirLight.position.set(0, 0, 1);  // comes from above, points toward z=0
+    _scene.add(_dirLight);
 
     // Primary torch — extended range, realistic warm decay
     _torchLight = new THREE.PointLight(0xff9820, 4.5, 700, 1.4);
@@ -425,8 +432,13 @@ function _updateAmbient(t) {
         b *= 1 - danger * 0.35;
     }
 
-    _ambientLight.color.setRGB(r, g, b);
+    _ambientLight.color.setRGB(r * 0.5, g * 0.5, b * 0.5);
     _ambientLight.intensity = intensity;
+    // Directional key light takes the full depth colour so tiles shift with floor
+    if (_dirLight) {
+        _dirLight.color.setRGB(r, g, b);
+        _dirLight.intensity = intensity * 0.80;
+    }
 }
 
 function threeJsActive() { return _THREE_ACTIVE; }
