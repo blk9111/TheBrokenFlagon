@@ -12885,9 +12885,10 @@ div[id$="-inner"]::before {
     background: #100c14;
     border: 1px solid rgba(var(--cs-acc-rgb), 0.2);
     border-radius: 10px;
-    padding: 13px 15px;
-    display: flex; gap: 13px; align-items: flex-start;
+    padding: 14px 16px;
+    display: flex; gap: 14px; align-items: flex-start;
     position: relative; overflow: hidden;
+    min-height: 82px;
     transition: border-color 0.4s;
 }
 .csn-ability::before {
@@ -12909,8 +12910,8 @@ div[id$="-inner"]::before {
     50%      { box-shadow: 0 0 0 7px rgba(var(--cs-acc-rgb), 0); }
 }
 .csn-abl-eye  { font-size: 9px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cs-acc); margin-bottom: 2px; transition: color 0.4s; }
-.csn-abl-name { font-size: 15px; font-weight: 900; letter-spacing: 0.07em; color: #fff; }
-.csn-abl-desc { font-size: 11px; color: rgba(232,221,208,0.45); margin: 3px 0 6px; font-family: Georgia, serif; font-style: italic; }
+.csn-abl-name { display: block; font-size: 16px; font-weight: 900; letter-spacing: 0.07em; color: #fff; margin-bottom: 3px; }
+.csn-abl-desc { display: block; font-size: 12px; color: rgba(232,221,208,0.65); margin: 3px 0 6px; font-family: Georgia, serif; font-style: italic; line-height: 1.45; }
 .csn-abl-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 .csn-tag {
     font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
@@ -12987,11 +12988,9 @@ div[id$="-inner"]::before {
 .csn-g-btn:hover { border-color: rgba(var(--cs-acc-rgb),0.4); color: #e8ddd0; }
 .csn-g-btn.on { background: rgba(var(--cs-acc-rgb),0.15); border-color: rgba(var(--cs-acc-rgb),0.5); color: var(--cs-acc); }
 
-.csn-portrait-preview {
-    height: 60px; width: auto; border-radius: 5px; object-fit: cover;
-    margin-left: auto; border: 1px solid rgba(255,255,255,0.12);
-    box-shadow: 0 0 12px rgba(var(--cs-acc-rgb),0.25);
-}
+/* Mini portrait thumbnail in the appearance row — redundant now that the
+   full-size portrait fills the left panel. Hidden permanently. */
+.csn-portrait-preview { display: none; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CHARACTER SELECT — ENHANCED VISUALS
