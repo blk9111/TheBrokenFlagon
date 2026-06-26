@@ -300,7 +300,7 @@ button:active:not(:disabled) {
 
 body {
     height: 100vh;
-    padding: 24px;
+    padding: 24px 24px 0;   /* bottom: 0 — prevents the 24px overflow that clips #controls-panel */
     background:
         radial-gradient(circle at top left, rgba(255, 214, 90, 0.08), transparent 34%),
         linear-gradient(135deg, #151514 0%, #1d1c1a 45%, #10100f 100%);

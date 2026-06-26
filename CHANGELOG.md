@@ -28,13 +28,55 @@ project uses [Semantic Versioning](https://semver.org/): **MAJOR.MINOR.PATCH**
 _Work not yet cut into a version. Add new entries here as you go._
 
 ### Added
--
+- **Three.js WebGL dungeon renderer** — real-time tile and wall rendering via
+  a WebGL canvas layered under the Canvas 2D overlay. Features: torch flicker
+  with dual-frequency flame simulation, enemy aura PointLights, exit beacon
+  lights, wall-sconce torches (regenerated per floor), item rarity glow,
+  220-particle mist system, depth-based ambient colour shift (warm→blue-grey
+  →purple by floor), boss pulse, low-HP danger red tint. Uses
+  `MeshBasicMaterial` + per-tile JS lighting (sidesteps Three.js r128 Lambert +
+  InstancedMesh shader bug). (`js/render-three.js`, `js/three.min.js`)
+- **Subclass-specific character portraits** — character select loads
+  `{subclass}-{m|f}-portrait.png` first, falls back to `{class}-{m|f}.png`,
+  then to the animated SVG silhouette. Berserker portraits (800×830 px) ship as
+  first example. (`js/main.js`, `js/data.js`)
+- **Subclass in-game sprite overrides** — `SUBCLASS_SPRITE_SRC` table in
+  `data.js`; `getClassSprite()` checks `player.subclassId+gender` first.
+  Berserker (male/female) and Assassin (male/female) sprites included.
+  (`js/data.js`)
+- **Character select visual upgrades** — portrait breathing-glow animation,
+  L-shaped corner ornaments on art frame, animated diagonal light rays in left
+  panel, class-name animated glow, stat card hover-lift, subclass pill glow ring,
+  right-panel edge breathing animation. (`style.css`)
 
 ### Changed
--
+- **Portrait now fills left column** — was rendering at native 209×215 px because
+  JS `Object.assign(img.style, { width:'auto' })` overrode the CSS on every class
+  pick. Fixed to `width:'88%'`. (`js/main.js`)
+- **Signature Ability card** — `min-height: 82px` prevents collapse; `display:block`
+  added to `.csn-abl-name` and `.csn-abl-desc` at the CSS level so they render
+  even before JS runs. (`style.css`)
 
 ### Fixed
--
+- **Walls invisible** — `MeshLambertMaterial` in Three.js r128 does not compile
+  `USE_INSTANCING_COLOR` for vertex-shader Lambert lighting, making all
+  `InstancedMesh.setColorAt()` tiles render black. Switched to
+  `MeshBasicMaterial` + manual JS torch/ambient colour calculation per tile.
+- **Wall flash on floor transition** — when `gameState.dungeon` was temporarily
+  null during a floor rebuild, the previous frame's stale InstancedMesh geometry
+  rendered for one frame before clearing. Now zeroes all mesh counts before
+  returning. (`js/render-three.js`)
+- **Fog-of-war null guard** — if `gameState.revealed` was unset (tavern init
+  race before `revealAll()` fires), every tile received the 94%-opaque dark
+  overlay, making the entire dungeon black. Now treats missing revealed array as
+  "all revealed". (`js/render-three.js`)
+- **Mini portrait removed** — `.csn-portrait-preview` hidden permanently; the
+  small thumbnail in the appearance row was redundant with the large left-panel
+  portrait. (`style.css`)
+- **Body bottom padding cutoff** — `body { padding: 24px }` without
+  `box-sizing: border-box` let 24 px overflow the viewport, clipping the
+  `#controls-panel` hotkey hints. Fixed with `padding: 24px 24px 0`. (`style.css`)
+
 
 ---
 
