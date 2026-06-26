@@ -12,7 +12,7 @@
 let _THREE_ACTIVE = false;
 let _renderer = null, _scene = null, _camera = null;
 const _MAX_INST = 2400;
-let _floorMesh = null, _wallMesh = null, _darkMesh = null;
+let _floorMesh = null, _wallMesh = null, _wallCapMesh = null, _wallAOMesh = null, _darkMesh = null;
 let _torchLight = null, _torchLight2 = null;
 const _enemyLights = [], _exitLights = [];
 let _dummy = null, _col = null;
@@ -34,11 +34,16 @@ let _ambR = 0.55, _ambG = 0.42, _ambB = 0.28; // current ambient tint
 let _torchFlicker = 1.0; // current torch intensity multiplier
 
 // ── Base tile PAL colours (un-lit; multiplied by ambient+torch each frame) ───
+// Walls are deliberately COOL + DARK stone so they read as distinct masonry
+// against the warm amber floor. WALL_TOP is the lit cap face (catches torch),
+// WALL_SIDE is the shadowed vertical face. The strong hue + value separation
+// is what makes walls legible at the orthographic top-down angle.
 const PAL = {
     FLOOR:      [0.72, 0.52, 0.30],
     FLOOR_EXIT: [0.30, 0.60, 0.34],
     FLOOR_UP:   [0.38, 0.28, 0.60],
-    WALL:       [0.55, 0.38, 0.20],
+    WALL:       [0.42, 0.40, 0.46],   // cool grey-stone cap (was warm brown)
+    WALL_SIDE:  [0.22, 0.21, 0.26],   // darker shadowed face
 };
 
 // ── Rarity → glow colour ─────────────────────────────────────────────────────
@@ -105,7 +110,7 @@ function initThreeJS() {
 
 
 function _buildTileMeshes() {
-    const TS = TILE_SIZE, wallH = Math.round(TS * 0.32);
+    const TS = TILE_SIZE, wallH = Math.round(TS * 0.62);
 
     // MeshBasicMaterial — NOT affected by scene lights; colour is set via
     // setColorAt() each frame after manual JS lighting calculation.
@@ -113,18 +118,41 @@ function _buildTileMeshes() {
     _floorMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS, TS),
         new THREE.MeshBasicMaterial(), _MAX_INST);
     _floorMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    _floorMesh.count = 0; _scene.add(_floorMesh);
+    _floorMesh.count = 0; _floorMesh.renderOrder = 0; _scene.add(_floorMesh);
 
+    // ── Wall AO ring ──────────────────────────────────────────────────────
+    // A slightly oversized dark plane sitting on the floor under each wall
+    // block. This fakes ambient-occlusion contact shadow so the wall reads as
+    // grounded masonry rather than a floating block. Drawn first (lowest z).
+    _wallAOMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS * 1.18, TS * 1.18),
+        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false }),
+        _MAX_INST);
+    _wallAOMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _wallAOMesh.count = 0; _wallAOMesh.position.z = 1; _wallAOMesh.renderOrder = 1; _scene.add(_wallAOMesh);
+
+    // ── Wall body ─────────────────────────────────────────────────────────
+    // The extruded block. Taller now (0.62 vs 0.32) so its sides catch torch
+    // light and it casts a clear silhouette. Coloured WALL_SIDE (dark face).
     _wallMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(TS, TS, wallH),
         new THREE.MeshBasicMaterial(), _MAX_INST);
     _wallMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    _wallMesh.count = 0; _scene.add(_wallMesh);
+    _wallMesh.count = 0; _wallMesh.renderOrder = 2; _scene.add(_wallMesh);
+
+    // ── Wall cap ──────────────────────────────────────────────────────────
+    // A bright top-face plane sitting on top of each wall block. This is what
+    // the player mostly sees from above; colouring it lighter than the floor
+    // (cool stone) gives the instant "that's a wall" read. Slightly inset so a
+    // thin dark rim from the body shows around the edge = bevelled stone look.
+    _wallCapMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS * 0.88, TS * 0.88),
+        new THREE.MeshBasicMaterial(), _MAX_INST);
+    _wallCapMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _wallCapMesh.count = 0; _wallCapMesh.renderOrder = 3; _scene.add(_wallCapMesh);
 
     _darkMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(TS, TS),
         new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.94 }),
         _MAX_INST);
     _darkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    _darkMesh.count = 0; _darkMesh.position.z = 6; _scene.add(_darkMesh);
+    _darkMesh.count = 0; _darkMesh.position.z = 120; _darkMesh.renderOrder = 10; _scene.add(_darkMesh);
 }
 
 function _resizeThree() {
@@ -164,6 +192,13 @@ function _litColor(pal, wx, wy, px, py, flicker) {
     ];
 }
 
+// Deterministic per-tile brightness jitter (-1..1) so flagstones don't read as
+// one flat painted plane. Cheap hash on tile coords — stable across frames.
+function _tileJitter(tx, ty) {
+    const h = Math.sin(tx * 127.1 + ty * 311.7) * 43758.5453;
+    return (h - Math.floor(h)) * 2 - 1; // -1..1
+}
+
 // ── Main per-frame update ─────────────────────────────────────────────────────
 function updateThreeDungeon() {
     if (!_THREE_ACTIVE || !_renderer) return;
@@ -172,9 +207,11 @@ function updateThreeDungeon() {
 
     // Dungeon mid-rebuild: zero out meshes so no stale geometry flashes
     if (!s?.dungeon || !s.dungeon.length) {
-        if (_floorMesh) { _floorMesh.count = 0; _floorMesh.instanceMatrix.needsUpdate = true; }
-        if (_wallMesh)  { _wallMesh.count  = 0; _wallMesh.instanceMatrix.needsUpdate  = true; }
-        if (_darkMesh)  { _darkMesh.count  = 0; _darkMesh.instanceMatrix.needsUpdate  = true; }
+        if (_floorMesh)   { _floorMesh.count   = 0; _floorMesh.instanceMatrix.needsUpdate   = true; }
+        if (_wallMesh)    { _wallMesh.count    = 0; _wallMesh.instanceMatrix.needsUpdate    = true; }
+        if (_wallCapMesh) { _wallCapMesh.count = 0; _wallCapMesh.instanceMatrix.needsUpdate = true; }
+        if (_wallAOMesh)  { _wallAOMesh.count  = 0; _wallAOMesh.instanceMatrix.needsUpdate  = true; }
+        if (_darkMesh)    { _darkMesh.count    = 0; _darkMesh.instanceMatrix.needsUpdate    = true; }
         _renderer.render(_scene, _camera);
         return;
     }
@@ -185,7 +222,8 @@ function updateThreeDungeon() {
     const dungeon = s.dungeon;
     const mapH = dungeon.length, mapW = dungeon[0]?.length || 0;
     const TS = TILE_SIZE;
-    let fi = 0, wi = 0, di = 0;
+    const wallH = Math.round(TS * 0.62);
+    let fi = 0, wi = 0, ci = 0, ai = 0, di = 0;
 
     // Player world position for torch calculation
     const p = s.player;
@@ -203,16 +241,38 @@ function updateThreeDungeon() {
 
             if (tile === 1) {
                 if (wi < _MAX_INST) {
-                    const wallH = Math.round(TS * 0.32);
+                    // ── AO contact shadow on the floor beneath the wall ──
+                    if (ai < _MAX_INST) {
+                        _dummy.position.set(wx, wy, 1);
+                        _dummy.rotation.set(0, 0, 0); _dummy.scale.set(1, 1, 1);
+                        _dummy.updateMatrix();
+                        _wallAOMesh.setMatrixAt(ai, _dummy.matrix); ai++;
+                    }
+
+                    // ── Wall body (dark side faces) ──
                     _dummy.position.set(wx, wy, wallH / 2);
                     _dummy.rotation.set(0, 0, 0); _dummy.scale.set(1, 1, 1);
                     _dummy.updateMatrix();
                     _wallMesh.setMatrixAt(wi, _dummy.matrix);
-                    // Walls slightly darker than floor by reducing torch contribution
-                    const wPal = PAL.WALL;
-                    const litW = _litColor(wPal, wx, wy, px, py, _torchFlicker * 0.7);
-                    _col.setRGB(litW[0], litW[1], litW[2]);
+                    const litSide = _litColor(PAL.WALL_SIDE, wx, wy, px, py, _torchFlicker * 0.5);
+                    _col.setRGB(litSide[0], litSide[1], litSide[2]);
                     _wallMesh.setColorAt(wi, _col); wi++;
+
+                    // ── Wall cap (bright cool-stone top) ──
+                    if (ci < _MAX_INST) {
+                        _dummy.position.set(wx, wy, wallH + 1.5);
+                        _dummy.rotation.set(0, 0, 0); _dummy.scale.set(1, 1, 1);
+                        _dummy.updateMatrix();
+                        _wallCapMesh.setMatrixAt(ci, _dummy.matrix);
+                        const litCap = _litColor(PAL.WALL, wx, wy, px, py, _torchFlicker * 0.85);
+                        // Stone-block variation so the masonry isn't uniform.
+                        const jc = 1 + _tileJitter(tx * 1.7, ty * 1.3) * 0.10;
+                        litCap[0] = Math.min(1, litCap[0] * jc);
+                        litCap[1] = Math.min(1, litCap[1] * jc);
+                        litCap[2] = Math.min(1, litCap[2] * jc);
+                        _col.setRGB(litCap[0], litCap[1], litCap[2]);
+                        _wallCapMesh.setColorAt(ci, _col); ci++;
+                    }
                 }
             } else {
                 if (fi < _MAX_INST) {
@@ -224,6 +284,14 @@ function updateThreeDungeon() {
                               : tile === 3 ? PAL.FLOOR_UP
                               : PAL.FLOOR;
                     const litF = _litColor(pal, wx, wy, px, py, _torchFlicker);
+                    // Per-flagstone brightness jitter so the floor reads as
+                    // individual stones, not one flat plane. ±6% on plain floor.
+                    if (tile !== 2 && tile !== 3) {
+                        const j = 1 + _tileJitter(tx, ty) * 0.06;
+                        litF[0] = Math.min(1, litF[0] * j);
+                        litF[1] = Math.min(1, litF[1] * j);
+                        litF[2] = Math.min(1, litF[2] * j);
+                    }
                     _col.setRGB(litF[0], litF[1], litF[2]);
                     _floorMesh.setColorAt(fi, _col); fi++;
                 }
@@ -233,7 +301,7 @@ function updateThreeDungeon() {
             // If s.revealed is null/undefined (tavern init race), treat as all revealed.
             const isRevealed = !s.revealed || s.revealed[ty]?.[tx];
             if (!isRevealed && di < _MAX_INST) {
-                _dummy.position.set(wx, wy, 0);
+                _dummy.position.set(wx, wy, 120);
                 _dummy.rotation.set(0, 0, 0); _dummy.scale.set(1, 1, 1);
                 _dummy.updateMatrix();
                 _darkMesh.setMatrixAt(di, _dummy.matrix); di++;
@@ -241,12 +309,16 @@ function updateThreeDungeon() {
         }
     }
 
-    _floorMesh.count = fi; _wallMesh.count = wi; _darkMesh.count = di;
+    _floorMesh.count = fi; _wallMesh.count = wi;
+    _wallCapMesh.count = ci; _wallAOMesh.count = ai; _darkMesh.count = di;
     _floorMesh.instanceMatrix.needsUpdate = true;
     _wallMesh.instanceMatrix.needsUpdate  = true;
+    _wallCapMesh.instanceMatrix.needsUpdate = true;
+    _wallAOMesh.instanceMatrix.needsUpdate  = true;
     _darkMesh.instanceMatrix.needsUpdate  = true;
-    if (_floorMesh.instanceColor) _floorMesh.instanceColor.needsUpdate = true;
-    if (_wallMesh.instanceColor)  _wallMesh.instanceColor.needsUpdate  = true;
+    if (_floorMesh.instanceColor)   _floorMesh.instanceColor.needsUpdate   = true;
+    if (_wallMesh.instanceColor)    _wallMesh.instanceColor.needsUpdate    = true;
+    if (_wallCapMesh.instanceColor) _wallCapMesh.instanceColor.needsUpdate = true;
 
     // Three.js PointLight positions (for mist / future materials)
     if (p && _torchLight) {
