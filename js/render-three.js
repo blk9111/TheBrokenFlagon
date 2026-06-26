@@ -16,12 +16,35 @@ let _ambientLight = null, _torchLight = null, _torchLight2 = null;
 const _enemyLights = [], _exitLights = [];
 let _dummy = null, _col = null;
 
+// ── Extra FX pools ────────────────────────────────────────────────────────────
+const _itemLights   = [];   // rarity-coloured glow on pickup items
+const _sconceLights = [];   // independent wall-sconce torches per floor
+let   _sconceFloor  = -99;  // track which floor the sconces were placed on
+const _SCONCE_COUNT = 6;
+const _ITEM_LIGHT_COUNT = 8;
+
+// ── Mist / fog particles ──────────────────────────────────────────────────────
+let _mistPoints = null;
+let _mistPos    = null; // Float32Array of xyz for each particle
+let _mistVel    = null; // Float32Array of vx, vy per particle
+const _MIST_COUNT = 220;
+
 // Base (unlit) tile colours — PointLights bring these to life at runtime
 const PAL = {
     FLOOR:      [0.14, 0.10, 0.06],
     FLOOR_EXIT: [0.06, 0.13, 0.08],
     FLOOR_UP:   [0.09, 0.06, 0.14],
     WALL:       [0.10, 0.07, 0.03],
+};
+
+// Rarity → light colour map
+const _RARITY_COL = {
+    common:    0xffd8a0,
+    uncommon:  0x50e870,
+    rare:      0x4090ff,
+    epic:      0xc060ff,
+    legendary: 0xffa020,
+    mythic:    0xff30a0,
 };
 
 
@@ -65,6 +88,21 @@ function initThreeJS() {
         const xl = new THREE.PointLight(0x20ff70, 2.5, 200, 2.0);
         xl.position.z = 24; xl.visible = false; _scene.add(xl); _exitLights.push(xl);
     }
+
+    // ── Item rarity lights ────────────────────────────────────────────────
+    for (let i = 0; i < _ITEM_LIGHT_COUNT; i++) {
+        const il = new THREE.PointLight(0xffd8a0, 0, 90, 2.5);
+        il.position.z = 16; il.visible = false; _scene.add(il); _itemLights.push(il);
+    }
+
+    // ── Wall sconce lights ────────────────────────────────────────────────
+    for (let i = 0; i < _SCONCE_COUNT; i++) {
+        const sl = new THREE.PointLight(0xffa030, 0, 160, 2.0);
+        sl.position.z = 20; sl.visible = false; _scene.add(sl); _sconceLights.push(sl);
+    }
+
+    // ── Dungeon mist particles ────────────────────────────────────────────
+    _initMist();
 
     _buildTileMeshes();
     _resizeThree();
@@ -199,10 +237,15 @@ function updateThreeDungeon() {
         } else { light.visible = false; }
     });
 
+    // ── New FX systems ────────────────────────────────────────────────────
+    _updateMist(t);
+    _updateSconces(t);
+    _updateItemLights(t);
+    _updateAmbient(t);
+
     _syncCamera();
     _renderer.render(_scene, _camera);
 }
-
 function _syncCamera() {
     const gc = document.getElementById('three-canvas');
     if (!gc||!_camera) return;
@@ -216,6 +259,160 @@ function _syncCamera() {
     _camera.left=cx-hw+sx; _camera.right=cx+hw+sx;
     _camera.top=cy+hh-sy; _camera.bottom=cy-hh-sy;
     _camera.updateProjectionMatrix();
+}
+
+// ── Mist init ─────────────────────────────────────────────────────────────────
+function _initMist() {
+    const pos = new Float32Array(_MIST_COUNT * 3);
+    _mistVel  = new Float32Array(_MIST_COUNT * 2);
+    const alpha = new Float32Array(_MIST_COUNT);
+
+    for (let i = 0; i < _MIST_COUNT; i++) {
+        pos[i*3]   = Math.random() * LOGICAL_W;
+        pos[i*3+1] = -(Math.random() * LOGICAL_H);
+        pos[i*3+2] = 3; // just above floor, below fog-of-war overlay (z=6)
+        _mistVel[i*2]   = (Math.random() - 0.5) * 0.25;
+        _mistVel[i*2+1] = (Math.random() - 0.5) * 0.08;
+        alpha[i] = Math.random(); // phase offset for opacity flicker
+    }
+    _mistPos = pos;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+    const mat = new THREE.PointsMaterial({
+        size: 12, color: 0x8899bb, transparent: true,
+        opacity: 0.10, depthWrite: false,
+        blending: THREE.AdditiveBlending, sizeAttenuation: false
+    });
+
+    _mistPoints = new THREE.Points(geo, mat);
+    _scene.add(_mistPoints);
+}
+
+// ── Mist update (called per frame) ───────────────────────────────────────────
+function _updateMist(t) {
+    if (!_mistPoints || !_mistPos) return;
+    const s = gameState;
+    const W = (s?.dungeon?.[0]?.length || MAP_WIDTH)  * TILE_SIZE;
+    const H = (s?.dungeon?.length      || MAP_HEIGHT) * TILE_SIZE;
+
+    for (let i = 0; i < _MIST_COUNT; i++) {
+        _mistPos[i*3]   += _mistVel[i*2];
+        _mistPos[i*3+1] += _mistVel[i*2+1];
+        // Wrap around dungeon bounds
+        if (_mistPos[i*3]   < 0)  _mistPos[i*3]   = W;
+        if (_mistPos[i*3]   > W)  _mistPos[i*3]   = 0;
+        if (_mistPos[i*3+1] > 0)  _mistPos[i*3+1] = -H;
+        if (_mistPos[i*3+1] < -H) _mistPos[i*3+1] = 0;
+    }
+    _mistPoints.geometry.attributes.position.needsUpdate = true;
+    // Slow opacity pulse based on floor depth
+    const depthOpacity = Math.min(0.06 + (s?.floor || 0) * 0.0025, 0.18);
+    _mistPoints.material.opacity = depthOpacity + Math.sin(t * 0.4) * 0.02;
+}
+
+// ── Wall sconce placement (regenerates on floor change) ──────────────────────
+function _updateSconces(t) {
+    const s = gameState;
+    if (!s?.dungeon || s.floor === 0) {
+        _sconceLights.forEach(l => l.visible = false); return;
+    }
+
+    // Regenerate positions when floor changes
+    if (s.floor !== _sconceFloor) {
+        _sconceFloor = s.floor;
+        const dungeon = s.dungeon;
+        const H = dungeon.length, W = dungeon[0]?.length || 0;
+        const candidates = [];
+        for (let ty = 1; ty < H-1; ty++) {
+            for (let tx = 1; tx < W-1; tx++) {
+                if (dungeon[ty][tx] !== 0) continue; // floor only
+                // Adjacent to at least one wall
+                const hasWall = [[0,-1],[0,1],[-1,0],[1,0]].some(([dx,dy]) =>
+                    dungeon[ty+dy]?.[tx+dx] === 1);
+                if (hasWall) candidates.push({x:tx, y:ty});
+            }
+        }
+        // Shuffle and pick _SCONCE_COUNT positions
+        for (let i = candidates.length-1; i > 0; i--) {
+            const j = Math.floor(Math.random()*(i+1));
+            [candidates[i],candidates[j]] = [candidates[j],candidates[i]];
+        }
+        _sconceLights.forEach((light, i) => {
+            const pos = candidates[i];
+            if (pos) {
+                light.position.set((pos.x+0.5)*TILE_SIZE, -((pos.y+0.5)*TILE_SIZE), 22);
+                light.visible = true;
+            } else { light.visible = false; }
+        });
+    }
+
+    // Flicker each sconce independently
+    _sconceLights.forEach((light, i) => {
+        if (!light.visible) return;
+        light.intensity = 1.6 + Math.sin(t*2.9+i*1.7)*0.45 + Math.sin(t*6.1+i*0.9)*0.2;
+    });
+}
+
+// ── Item rarity lights ────────────────────────────────────────────────────────
+function _updateItemLights(t) {
+    const s = gameState;
+    const visItems = (s?.items||[])
+        .filter(item => s.revealed?.[item.y]?.[item.x] && !item.collected)
+        .slice(0, _ITEM_LIGHT_COUNT);
+
+    _itemLights.forEach((light, i) => {
+        const item = visItems[i];
+        if (item) {
+            light.position.set((item.x+0.5)*TILE_SIZE, -((item.y+0.5)*TILE_SIZE), 16);
+            const rarity = (item.rarity||'common').toLowerCase();
+            light.color.setHex(_RARITY_COL[rarity] || _RARITY_COL.common);
+            const isLeg = rarity === 'legendary' || rarity === 'mythic';
+            light.intensity = (isLeg ? 2.2 : 0.9) + Math.sin(t*3.5+i)*0.3;
+            light.distance  = isLeg ? 140 : 80;
+            light.visible   = true;
+        } else { light.visible = false; }
+    });
+}
+
+// ── Ambient depth shift + danger pulse ───────────────────────────────────────
+function _updateAmbient(t) {
+    if (!_ambientLight) return;
+    const s = gameState;
+    const floor = s?.floor || 0;
+    const p = s?.player;
+    const hpFrac = p ? p.hp / Math.max(1, p.maxHp) : 1;
+    const bossNear = (s?.enemies||[]).some(e => e.hp>0 && (e.type==='boss'||e.bossVariant) && s.revealed?.[e.y]?.[e.x]);
+
+    // Depth-based ambient: warm shallow → cool grey mid → cold purple deep
+    let r, g, b, intensity;
+    if (floor === 0)      { r=0.12; g=0.09; b=0.06; intensity=0.6; }  // tavern: warm
+    else if (floor < 15)  { r=0.10; g=0.07; b=0.04; intensity=0.5; }  // shallow: brown
+    else if (floor < 35)  { r=0.06; g=0.07; b=0.09; intensity=0.45; } // mid: blue-grey
+    else if (floor < 65)  { r=0.05; g=0.04; b=0.09; intensity=0.4; }  // deep: purple
+    else                  { r=0.08; g=0.03; b=0.10; intensity=0.38; } // abyss: violet
+
+    // Boss override: pulse toward deep red
+    if (bossNear) {
+        const pulse = 0.5 + Math.sin(t * 2.4) * 0.5;
+        r = r + (0.20 - r) * pulse * 0.7;
+        g = g * (1 - pulse * 0.5);
+        b = b * (1 - pulse * 0.4);
+        intensity += pulse * 0.3;
+    }
+
+    // Low-HP danger: red tint that intensifies as HP drops
+    if (hpFrac < 0.30 && floor > 0) {
+        const danger = (0.30 - hpFrac) / 0.30; // 0→1 as hp → 0
+        const pulse = 0.5 + Math.sin(t * 4.5) * 0.5;
+        r = r + (0.25 * danger * pulse);
+        g *= 1 - danger * 0.4;
+        b *= 1 - danger * 0.4;
+    }
+
+    _ambientLight.color.setRGB(r, g, b);
+    _ambientLight.intensity = intensity;
 }
 
 function threeJsActive() { return _THREE_ACTIVE; }
